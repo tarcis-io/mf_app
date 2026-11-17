@@ -4,12 +4,12 @@ import NeuralNetworkBackground from "@/components/neural-network-background";
 
 export default function Login() {
   return (
-    <div className="relative flex min-h-full flex-1 flex-col items-center justify-center gap-8 overflow-hidden bg-white px-8 text-center font-sans">
+    <div className="relative flex min-h-full flex-1 flex-col items-center justify-center gap-16 overflow-hidden bg-white px-8 text-center font-sans">
       <NeuralNetworkBackground />
-      <div className="relative flex flex-col items-center gap-3">
-        <Image src="/logo.svg" alt="MassFlow AI" width={56} height={56} priority />
-        <span className="text-2xl font-semibold tracking-tight text-black">
-          MassFlow AI
+      <div className="relative flex flex-row items-center gap-4">
+        <Image src="/logo.svg" alt="MassFlow AI" width={64} height={64} priority />
+        <span className="text-4xl font-semibold tracking-tight text-black">
+          MassFlow <span className="text-black/50">AI</span>
         </span>
       </div>
       <button
