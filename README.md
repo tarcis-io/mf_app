@@ -29,7 +29,7 @@ The dev server listens on [http://localhost:3000](http://localhost:3000).
 
 ## Pages
 
-| Path     | Description                             |
+| Path     | Description                              |
 | -------- | ---------------------------------------- |
 | `/`      | Home page (logged-in area).              |
 | `/login` | Login page.                              |
@@ -46,19 +46,19 @@ pnpm lint    # eslint (eslint-config-next core-web-vitals + typescript)
 ## Layout
 
 ```
-mf_app/
+mf_app/                            # repository root
 ├── package.json
 ├── pnpm-workspace.yaml
-├── next.config.ts              # Next.js config (Turbopack + Tailwind)
-├── tsconfig.json                # path alias: "@/*" -> "./*"
+├── next.config.ts                 # Next.js config (Turbopack + Tailwind)
+├── tsconfig.json                  # path alias: "@/*" -> "./*"
 ├── eslint.config.mjs
 ├── README.md
-├── public/                      # static assets
+├── public/                        # static assets
 ├── components/
 │   └── templates/
-│       └── logged-in-template.tsx  # shared shell for logged-in pages
+│       └── logged-in-template.tsx # shared shell for logged-in pages
 └── app/
-    ├── layout.tsx                # root layout (fonts, metadata, <html>/<body>)
+    ├── layout.tsx                 # root layout (fonts, metadata, <html>/<body>)
     ├── globals.css                # Tailwind entrypoint + theme tokens
     ├── page.tsx                   # "/" — home page (logged-in)
     └── login/
@@ -73,10 +73,10 @@ the rest of the logged-in area.
 
 ## Backend
 
-| Repository                                              | Role                                              |
-| --------------------------------------------------------- | -------------------------------------------------- |
-| [mf_service](https://github.com/tarcis-io/mf_service)   | HTTP API `mf_app` talks to (FastAPI).            |
-| [mf_engine](https://github.com/tarcis-io/mf_engine)      | Core processing engine, used internally by `mf_service`. |
+| Repository                                            | Role                                                     |
+| ----------------------------------------------------- | -------------------------------------------------------- |
+| [mf_service](https://github.com/tarcis-io/mf_service) | HTTP API `mf_app` talks to (FastAPI).                    |
+| [mf_engine](https://github.com/tarcis-io/mf_engine)   | Core processing engine, used internally by `mf_service`. |
 
 `mf_app` does not yet point at a live `mf_service` instance — wiring up the API
 base URL and authentication is expected as this project grows.
