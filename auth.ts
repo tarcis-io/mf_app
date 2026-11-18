@@ -1,6 +1,13 @@
 import NextAuth, { type NextAuthConfig } from "next-auth";
 import Google from "next-auth/providers/google";
 
+import { validateEnv } from "@/env";
+
+// Fail fast at server start if required secrets are missing, rather than
+// surfacing a confusing error at the first sign-in. No-op during `next build`.
+// See `@/env` and DEPLOYMENT.md.
+validateEnv();
+
 /**
  * Auth.js (NextAuth v5) configuration for MassFlow AI.
  *

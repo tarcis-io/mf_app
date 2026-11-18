@@ -51,6 +51,11 @@ database.
 `.env.local` is git-ignored; only `.env.example` (with empty placeholders) is
 committed.
 
+These three are required in every environment and the app **fails fast at
+startup** if any is missing (see `env.ts`). In production (e.g. Cloud Run) you
+must also set `AUTH_URL` and `AUTH_TRUST_HOST=true` — see
+[Deployment](#deployment) and [`DEPLOYMENT.md`](./DEPLOYMENT.md).
+
 ## Run
 
 ```bash
@@ -64,7 +69,20 @@ The dev server listens on [http://localhost:3000](http://localhost:3000).
 ## Deployment
 
 `mf_app` ships with a `Dockerfile` (multi-stage, Next.js standalone output)
-and is set up to run on **Google Cloud Run**.
+and is set up to run on **Google Cloud Run**. See **[`DEPLOYMENT.md`](./DEPLOYMENT.md)**
+for the full guide: building the image, the required production environment
+variables (`AUTH_URL`, `AUTH_TRUST_HOST`, secrets via Secret Manager), the
+Google OAuth redirect-URI setup, and troubleshooting.
+
+## Security
+
+Every response carries hardening headers. A strict **Content-Security-Policy**
+with a fresh per-request nonce is set in `proxy.ts` (`script-src` is
+nonce-based with `'strict-dynamic'` — no `'unsafe-inline'` scripts); the static
+headers (`Strict-Transport-Security`, `X-Content-Type-Options`,
+`X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`,
+`Cross-Origin-Opener-Policy`) come from `next.config.ts`. When `mf_service` is
+wired up, add its origin to the CSP `connect-src` directive in `proxy.ts`.
 
 ## Pages
 
@@ -103,8 +121,12 @@ mf_app/                                    # repository root
 ├── vitest.setup.ts                        # global test setup (jest-dom matchers)
 ├── auth.ts                                # Auth.js (NextAuth) config + authorized callback
 ├── auth.test.ts                           # tests for the authorized (route-protection) callback
-├── proxy.ts                               # route protection (Next 16 proxy/middleware)
+├── env.ts                                 # fail-fast validation of required env vars
+├── env.test.ts
+├── proxy.ts                               # route protection + per-request CSP (Next 16 proxy)
+├── proxy.test.ts
 ├── .env.example                           # template for required env vars
+├── DEPLOYMENT.md                          # Cloud Run deployment guide (env contract, OAuth)
 ├── README.md
 ├── public/
 │   └── logo.svg                           # wordmark logo (login page)

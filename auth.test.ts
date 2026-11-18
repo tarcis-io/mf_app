@@ -9,6 +9,10 @@ vi.mock("next-auth", () => ({
   default: () => ({ handlers: {}, signIn: vi.fn(), signOut: vi.fn(), auth: vi.fn() }),
 }));
 vi.mock("next-auth/providers/google", () => ({ default: () => ({}) }));
+// Importing `@/auth` runs `validateEnv()` at module load, which would throw
+// without real secrets in the environment. Stub it to a no-op; `env.ts` has
+// its own dedicated tests (see `env.test.ts`).
+vi.mock("@/env", () => ({ validateEnv: vi.fn() }));
 
 import { authorized } from "./auth";
 
