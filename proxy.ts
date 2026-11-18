@@ -42,12 +42,18 @@ function buildCsp(nonce: string): string {
 /**
  * Generate a fresh CSP nonce using only Web-standard APIs (`crypto` + `btoa`),
  * so it works in both the Edge and Node.js runtimes — `Buffer` is not reliably
- * available in middleware/proxy on Edge. 16 random bytes, base64-encoded; the
- * resulting charset (`A–Za–z0–9+/=`) is within what Next's nonce parser accepts.
+ * available in middleware/proxy on Edge. 16 random bytes (128 bits of entropy),
+ * base64url-encoded: the `+/=` of standard base64 are swapped for `-_` and the
+ * padding dropped. The nonce is an opaque token (never decoded), and the
+ * base64url charset avoids any layer that might mangle `+`, `/`, or `=` in an
+ * HTTP header while staying within the CSP `base64-value` grammar.
  */
 function generateNonce(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
-  return btoa(String.fromCharCode(...bytes));
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
 }
 
 export default auth((req) => {
@@ -101,12 +107,18 @@ export const config = {
    *   - `/api/auth/*`      — the Auth.js endpoints themselves (OAuth flow)
    *   - `/_next/static/*`  — build assets
    *   - `/_next/image/*`   — the image optimizer
-   *   - static icon/metadata files (favicon, icons, logo, etc.)
+   *   - any request for a file — the trailing `…\.[^/]+$` clause excludes any
+   *     path whose final segment has an extension (favicon.ico, icon.svg,
+   *     icon.png, apple-icon.png, logo.svg, and any future public asset or
+   *     file-based metadata route like robots.txt / sitemap.xml). Matching by
+   *     convention instead of a hardcoded filename list means new static assets
+   *     aren't accidentally run through auth + CSP.
    *
-   * Everything else — pages and any future application API routes — requires
-   * an authenticated session.
+   * Everything else requires an authenticated session. App Router pages are
+   * always extensionless, so protected routes are never matched by the file
+   * clause; conversely, don't give an authenticated route a file extension.
    */
   matcher: [
-    "/((?!api/auth|_next/static|_next/image|favicon.ico|icon.svg|icon.png|apple-icon.png|logo.svg).*)",
+    "/((?!api/auth|_next/static|_next/image|[^?]*\\.[^?/]+$).*)",
   ],
 };

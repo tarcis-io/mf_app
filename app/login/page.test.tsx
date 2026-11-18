@@ -56,10 +56,15 @@ describe("Login page", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders the footer with copyright and a contact email link", () => {
+  it("renders the footer with the current-year copyright and a contact email link", () => {
     render(<Login />);
 
-    expect(screen.getByText("© 2027 MassFlow AI")).toBeInTheDocument();
+    // Assert against the current year rather than a hardcoded one so the test
+    // doesn't need an annual edit (the page computes it at module load).
+    const year = new Date().getFullYear();
+    expect(
+      screen.getByText(`© ${year} MassFlow AI`),
+    ).toBeInTheDocument();
 
     const contact = screen.getByRole("link", { name: "t@rcis.io" });
     expect(contact).toHaveAttribute("href", "mailto:t@rcis.io");

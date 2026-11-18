@@ -3,6 +3,11 @@ import Image from "next/image";
 import { signIn } from "@/auth";
 import NeuralNetworkBackground from "@/components/neural-network-background";
 
+// Resolved once when the module is evaluated (build/prerender time), so the
+// copyright line stays current without pulling runtime data into this
+// otherwise-static page under Partial Prerendering.
+const COPYRIGHT_YEAR = new Date().getFullYear();
+
 export default function Login() {
   return (
     <div className="relative flex min-h-full flex-1 flex-col items-center justify-center gap-8 overflow-hidden bg-background px-8 text-center">
@@ -39,7 +44,7 @@ export default function Login() {
         </button>
       </form>
       <footer className="absolute inset-x-0 bottom-0 flex flex-col items-center gap-1 py-6 text-sm text-foreground/40">
-        <p>&copy; 2027 MassFlow AI</p>
+        <p>&copy; {COPYRIGHT_YEAR} MassFlow AI</p>
         <p>
           Developed by{" "}
           <a

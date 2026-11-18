@@ -80,9 +80,14 @@ describe("proxy", () => {
 
     const csp = res.headers.get("Content-Security-Policy");
     expect(csp).toBeTruthy();
-    // Strict script policy with a real nonce and strict-dynamic.
-    const match = csp!.match(/script-src [^;]*'nonce-([A-Za-z0-9+/_-]+={0,2})'/);
+    // Strict script policy with a real nonce and strict-dynamic. The nonce is
+    // base64url (see generateNonce): only A–Za–z0–9-_, no +, /, or = padding.
+    const match = csp!.match(/script-src [^;]*'nonce-([A-Za-z0-9_-]+)'/);
     expect(match).not.toBeNull();
+    const nonce = match![1];
+    expect(nonce).not.toMatch(/[+/=]/);
+    // 16 random bytes base64url-encode to 22 unpadded chars.
+    expect(nonce.length).toBe(22);
     expect(csp).toContain("'strict-dynamic'");
     expect(csp).toContain("object-src 'none'");
     expect(csp).toContain("frame-ancestors 'none'");
