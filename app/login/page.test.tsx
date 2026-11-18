@@ -14,8 +14,13 @@ describe("Login page", () => {
   it("renders the branded wordmark", () => {
     render(<Login />);
 
-    // "MassFlow" and "AI" are separate nodes, so match the leading word loosely.
-    expect(screen.getByText(/MassFlow/)).toBeInTheDocument();
+    // "MassFlow" and "AI" are separate nodes within the wordmark. Anchor on the
+    // dimmed "AI" span and assert its parent reads the full wordmark, so this
+    // stays specific to the wordmark and ignores other "MassFlow" text on the
+    // page (e.g. the footer copyright line).
+    expect(screen.getByText("AI").parentElement).toHaveTextContent(
+      "MassFlow AI",
+    );
   });
 
   it("renders the logo with accessible alt text", () => {
@@ -38,5 +43,14 @@ describe("Login page", () => {
     expect(
       screen.getByTestId("neural-network-background"),
     ).toBeInTheDocument();
+  });
+
+  it("renders the footer with copyright and a contact email link", () => {
+    render(<Login />);
+
+    expect(screen.getByText("© 2026 MassFlow AI")).toBeInTheDocument();
+
+    const contact = screen.getByRole("link", { name: "t@rcis.io" });
+    expect(contact).toHaveAttribute("href", "mailto:t@rcis.io");
   });
 });
