@@ -8,7 +8,12 @@ import { NextResponse } from "next/server";
 //     which we can call directly with a fabricated request.
 //   - `authorized` is a mock we program per test (true / false / a redirect
 //     Response). `authorized`'s own behavior is covered in `auth.test.ts`.
-const authorized = vi.fn();
+//
+// `authorized` is created via `vi.hoisted` so it's initialized in the same
+// hoisted phase as `vi.mock` (which Vitest lifts to the top of the file);
+// referencing a plain top-level `const` from the factory throws "cannot access
+// before initialization".
+const { authorized } = vi.hoisted(() => ({ authorized: vi.fn() }));
 vi.mock("@/auth", () => ({
   auth: (cb: unknown) => cb,
   authorized,

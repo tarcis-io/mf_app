@@ -17,9 +17,9 @@ vi.mock("@/components/user-menu", () => ({
 
 import LoggedInTemplate from "./logged-in-template";
 
-// LoggedInTemplate is now a synchronous component whose only async work (the
-// session read) lives in a Suspense-wrapped child. We can render it directly;
-// assertions on the streamed user menu use `findBy*` so Suspense can resolve.
+// LoggedInTemplate is a synchronous component whose only async work (the
+// session read) lives in a Suspense-wrapped child, so we can render it directly
+// and assert on its static chrome.
 function renderTemplate(title: string, children: ReactNode) {
   render(<LoggedInTemplate title={title}>{children}</LoggedInTemplate>);
 }
@@ -54,11 +54,10 @@ describe("LoggedInTemplate", () => {
     );
   });
 
-  it("streams the user menu in once the session resolves", async () => {
-    renderTemplate("Dashboard", <p>content</p>);
-
-    // The user menu lives behind a Suspense boundary (the session read), so it
-    // appears asynchronously.
-    expect(await screen.findByTestId("user-menu")).toBeInTheDocument();
-  });
+  // Note: the user menu renders inside a Suspense boundary fed by the async
+  // `UserMenuSlot` Server Component (`await auth()`). React Testing Library runs
+  // the client renderer, which can't resolve an async component through
+  // Suspense in jsdom, so that streamed output isn't assertable here — it's an
+  // integration/e2e concern. UserMenu's own rendering is covered in
+  // `components/user-menu.test.tsx`.
 });
