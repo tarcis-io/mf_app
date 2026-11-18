@@ -49,7 +49,7 @@ describe("proxy", () => {
   it("redirects an anonymous user on a protected route to a clean /login", () => {
     authorized.mockReturnValue(false);
 
-    const res = runProxy(makeRequest("/reports/2026", false));
+    const res = runProxy(makeRequest("/hello-world", false));
 
     expect(res.status).toBe(307);
     const target = new URL(res.headers.get("Location")!);

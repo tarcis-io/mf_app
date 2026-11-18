@@ -65,7 +65,7 @@ describe("authorized callback", () => {
   });
 
   it("protects nested routes the same way", () => {
-    expect(authorized(makeParams("/reports/2026", false))).toBe(false);
-    expect(authorized(makeParams("/reports/2026", true))).toBe(true);
+    expect(authorized(makeParams("/hello-world", false))).toBe(false);
+    expect(authorized(makeParams("/hello-world", true))).toBe(true);
   });
 });
