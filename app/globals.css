@@ -4,12 +4,14 @@
   --background: #ffffff;
   --foreground: #000000;
   --primary: #f97316;
+  --primary-hover: #ea580c;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
   --font-sans: var(--font-inter);
 }
 

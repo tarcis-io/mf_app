@@ -5,12 +5,12 @@ import NeuralNetworkBackground from "@/components/neural-network-background";
 
 export default function Login() {
   return (
-    <div className="relative flex min-h-full flex-1 flex-col items-center justify-center gap-8 overflow-hidden bg-white px-8 text-center font-sans">
+    <div className="relative flex min-h-full flex-1 flex-col items-center justify-center gap-8 overflow-hidden bg-background px-8 text-center">
       <NeuralNetworkBackground />
       <div className="relative flex flex-row items-center gap-4">
         <Image src="/logo.svg" alt="MassFlow AI" width={64} height={64} priority />
-        <span className="text-4xl font-semibold tracking-tight text-black">
-          MassFlow <span className="text-black/50">AI</span>
+        <span className="text-4xl font-semibold tracking-tight text-foreground">
+          MassFlow <span className="text-foreground/50">AI</span>
         </span>
       </div>
       <form
@@ -22,7 +22,7 @@ export default function Login() {
       >
         <button
           type="submit"
-          className="relative flex h-12 items-center justify-center gap-3 rounded-full bg-primary px-6 text-base font-medium text-white transition-colors hover:bg-orange-600"
+          className="relative flex h-12 items-center justify-center gap-3 rounded-full bg-primary px-6 text-base font-medium text-background transition-colors hover:bg-primary-hover"
         >
           <svg
             aria-hidden="true"
@@ -38,13 +38,13 @@ export default function Login() {
           Continue with Google
         </button>
       </form>
-      <footer className="absolute inset-x-0 bottom-0 flex flex-col items-center gap-1 py-6 text-sm text-black/40">
+      <footer className="absolute inset-x-0 bottom-0 flex flex-col items-center gap-1 py-6 text-sm text-foreground/40">
         <p>&copy; 2026 MassFlow AI</p>
         <p>
           Developed by{" "}
           <a
             href="mailto:t@rcis.io"
-            className="font-medium text-black/60 underline-offset-4 transition-colors hover:text-primary hover:underline"
+            className="font-medium text-foreground/60 underline-offset-4 transition-colors hover:text-primary hover:underline"
           >
             t@rcis.io
           </a>

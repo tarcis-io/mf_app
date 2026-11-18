@@ -11,8 +11,15 @@ interface Node {
 
 const NODE_COUNT = 60;
 const LINK_DISTANCE = 160;
-const NODE_COLOR = "rgba(249, 115, 22, 0.35)";
-const LINK_COLOR = "rgba(0, 0, 0, 0.08)";
+
+// The node/link hues come from the theme tokens (`--primary`, `--foreground`
+// in globals.css) so the backdrop tracks the brand automatically; only the
+// opacities — which keep the backdrop faint — live here. Fallbacks match the
+// current token values in case the custom properties can't be read.
+const NODE_OPACITY = 0.35;
+const LINK_OPACITY = 0.08;
+const NODE_FALLBACK = "#f97316";
+const LINK_FALLBACK = "#000000";
 
 /**
  * A subtle, animated neural-network backdrop: nodes drift slowly and draw a
@@ -34,6 +41,17 @@ export default function NeuralNetworkBackground() {
     let height = 0;
     let nodes: Node[] = [];
     let animationFrame = 0;
+
+    // Resolve the theme tokens to concrete colors with the opacities above
+    // baked in. Read once on mount; `color-mix` keeps the hue sourced from the
+    // CSS custom property while applying our alpha.
+    const styles = getComputedStyle(canvas);
+    const readToken = (name: string, fallback: string) =>
+      styles.getPropertyValue(name).trim() || fallback;
+    const nodeHue = readToken("--primary", NODE_FALLBACK);
+    const linkHue = readToken("--foreground", LINK_FALLBACK);
+    const nodeColor = `color-mix(in srgb, ${nodeHue} ${NODE_OPACITY * 100}%, transparent)`;
+    const linkColor = `color-mix(in srgb, ${linkHue} ${LINK_OPACITY * 100}%, transparent)`;
 
     const createNodes = () => {
       nodes = Array.from({ length: NODE_COUNT }, () => ({
@@ -77,7 +95,7 @@ export default function NeuralNetworkBackground() {
           const distance = Math.sqrt(dx * dx + dy * dy);
 
           if (distance < LINK_DISTANCE) {
-            ctx.strokeStyle = LINK_COLOR;
+            ctx.strokeStyle = linkColor;
             ctx.globalAlpha = 1 - distance / LINK_DISTANCE;
             ctx.lineWidth = 1;
             ctx.beginPath();
@@ -89,7 +107,7 @@ export default function NeuralNetworkBackground() {
       }
 
       ctx.globalAlpha = 1;
-      ctx.fillStyle = NODE_COLOR;
+      ctx.fillStyle = nodeColor;
       for (const node of nodes) {
         ctx.beginPath();
         ctx.arc(node.x, node.y, 2, 0, Math.PI * 2);

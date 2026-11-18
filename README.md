@@ -61,6 +61,11 @@ pnpm start   # run the production build
 
 The dev server listens on [http://localhost:3000](http://localhost:3000).
 
+## Deployment
+
+`mf_app` ships with a `Dockerfile` (multi-stage, Next.js standalone output)
+and is set up to run on **Google Cloud Run**.
+
 ## Pages
 
 | Path     | Description                              | Access        |
@@ -88,32 +93,43 @@ environment. Test files live next to the code they cover as `*.test.tsx`.
 ## Layout
 
 ```
-mf_app/                                 # repository root
+mf_app/                                    # repository root
 ├── package.json
 ├── pnpm-workspace.yaml
-├── next.config.ts                      # Next.js config (Turbopack + Tailwind)
-├── tsconfig.json                       # path alias: "@/*" -> "./*"
+├── next.config.ts                         # Next.js config (Turbopack + Tailwind)
+├── tsconfig.json                          # path alias: "@/*" -> "./*"
 ├── eslint.config.mjs
-├── vitest.config.ts                    # test runner config (jsdom + "@/*" alias)
-├── vitest.setup.ts                     # global test setup (jest-dom matchers)
-├── auth.ts                             # Auth.js (NextAuth) config — Google provider
-├── proxy.ts                            # route protection (Next 16 proxy/middleware)
-├── .env.example                        # template for required env vars
+├── vitest.config.ts                       # test runner config (jsdom + "@/*" alias)
+├── vitest.setup.ts                        # global test setup (jest-dom matchers)
+├── auth.ts                                # Auth.js (NextAuth) config + authorized callback
+├── auth.test.ts                           # tests for the authorized (route-protection) callback
+├── proxy.ts                               # route protection (Next 16 proxy/middleware)
+├── .env.example                           # template for required env vars
 ├── README.md
-├── public/                             # static assets
+├── public/
+│   └── logo.svg                           # wordmark logo (login page)
 ├── components/
-│   ├── neural-network-background.tsx   # decorative animated login backdrop
-│   ├── user-menu.tsx                   # signed-in user + sign-out control
+│   ├── neural-network-background.tsx      # decorative animated login backdrop
+│   ├── neural-network-background.test.tsx
+│   ├── user-menu.tsx                      # signed-in user + sign-out control
+│   ├── user-menu.test.tsx
 │   └── templates/
-│       └── logged-in-template.tsx      # shared shell for logged-in pages
+│       ├── logged-in-template.tsx         # shared shell for logged-in pages
+│       └── logged-in-template.test.tsx
 └── app/
-    ├── layout.tsx                      # root layout (fonts, metadata, <html>/<body>)
-    ├── globals.css                     # Tailwind entrypoint + theme tokens
-    ├── page.tsx                        # "/" — home page (logged-in)
+    ├── layout.tsx                         # root layout (fonts, metadata, viewport)
+    ├── globals.css                        # Tailwind entrypoint + theme tokens
+    ├── favicon.ico
+    ├── icon.svg
+    ├── icon.png
+    ├── apple-icon.png
+    ├── page.tsx                           # "/" — home page (logged-in)
+    ├── page.test.tsx
     ├── api/
-    │   └── auth/[...nextauth]/route.ts # Auth.js OAuth endpoints
+    │   └── auth/[...nextauth]/route.ts    # Auth.js OAuth endpoints
     └── login/
-        └── page.tsx                    # "/login" — login page
+        ├── page.tsx                       # "/login" — login page
+        └── page.test.tsx
 ```
 
 This uses the Next.js **App Router** (`app/`). Routes map to folders:
@@ -121,7 +137,8 @@ This uses the Next.js **App Router** (`app/`). Routes map to folders:
 should wrap their content in `LoggedInTemplate` from
 `components/templates/logged-in-template.tsx` to stay visually consistent with
 the rest of the logged-in area — and are protected automatically by `proxy.ts`,
-with no per-page code.
+with no per-page code. Tests live beside the code they cover as `*.test.tsx`
+(and `*.test.ts`).
 
 ## Backend
 

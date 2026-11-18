@@ -1,0 +1,71 @@
+name: CI
+
+# Lint, test, and build on every push to main and on pull requests.
+# This gates regressions (like a broken lint toolchain or type error) before
+# they reach a deploy. Deployment to Cloud Run is intentionally NOT wired here
+# yet — see the commented stub at the bottom and DEPLOYMENT.md.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        # Version comes from package.json "packageManager".
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+          # The build reads no secrets (auth config is read at runtime), so no
+          # AUTH_* vars are needed here.
+
+  # ---------------------------------------------------------------------------
+  # Deploy stub — uncomment and fill in once you've set up Workload Identity
+  # Federation between GitHub and Google Cloud (recommended over a JSON key).
+  #
+  # deploy:
+  #   needs: verify
+  #   if: github.ref == 'refs/heads/main'
+  #   runs-on: ubuntu-latest
+  #   permissions:
+  #     contents: read
+  #     id-token: write   # required for Workload Identity Federation
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: google-github-actions/auth@v2
+  #       with:
+  #         workload_identity_provider: projects/<N>/locations/global/workloadIdentityPools/<pool>/providers/<provider>
+  #         service_account: <deployer>@<project>.iam.gserviceaccount.com
+  #     - uses: google-github-actions/setup-gcloud@v2
+  #     - name: Deploy to Cloud Run
+  #       run: |
+  #         gcloud run deploy mf-app \
+  #           --source . \
+  #           --region <region> \
+  #           --allow-unauthenticated \
+  #           --set-env-vars AUTH_URL=https://<your-cloud-run-url> \
+  #           --set-secrets AUTH_SECRET=AUTH_SECRET:latest,AUTH_GOOGLE_ID=AUTH_GOOGLE_ID:latest,AUTH_GOOGLE_SECRET=AUTH_GOOGLE_SECRET:latest

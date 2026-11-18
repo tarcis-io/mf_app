@@ -1,4 +1,4 @@
-import NextAuth from "next-auth";
+import NextAuth, { type NextAuthConfig } from "next-auth";
 import Google from "next-auth/providers/google";
 
 /**
@@ -16,6 +16,37 @@ import Google from "next-auth/providers/google";
  * `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET` are read automatically by the
  * Google provider from the environment, so they are not referenced here.
  */
+
+/** The `authorized` callback's exact signature, derived from Auth.js config. */
+type AuthorizedCallback = NonNullable<
+  NonNullable<NextAuthConfig["callbacks"]>["authorized"]
+>;
+
+/**
+ * Gatekeeper used by `proxy.ts` (see Next.js 16 proxy / middleware), run on
+ * every matched request:
+ *
+ *   - On `/login`: authenticated users are redirected to the home page (they
+ *     have no reason to see the login page); anonymous users may stay.
+ *   - On every other matched route: a session is required. Returning `false`
+ *     makes Auth.js redirect the visitor to the `signIn` page.
+ *
+ * Exported so it can be unit-tested directly (see `auth.test.ts`).
+ */
+export const authorized: AuthorizedCallback = ({ auth, request }) => {
+  const isLoggedIn = Boolean(auth?.user);
+  const isOnLogin = request.nextUrl.pathname === "/login";
+
+  if (isOnLogin) {
+    if (isLoggedIn) {
+      return Response.redirect(new URL("/", request.nextUrl.origin));
+    }
+    return true;
+  }
+
+  return isLoggedIn;
+};
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [Google],
   // No database adapter is configured, so use stateless JWT sessions.
@@ -26,26 +57,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     signIn: "/login",
   },
   callbacks: {
-    /**
-     * Gatekeeper used by `proxy.ts` (see Next.js 16 proxy / middleware).
-     * Returning `false` for a protected route makes Auth.js redirect the
-     * visitor to the `signIn` page configured above.
-     */
-    authorized({ auth, request }) {
-      const isLoggedIn = Boolean(auth?.user);
-      const isOnLogin = request.nextUrl.pathname === "/login";
-
-      if (isOnLogin) {
-        // Already-authenticated users have no reason to see the login page;
-        // send them to the home page. Anonymous users may stay.
-        if (isLoggedIn) {
-          return Response.redirect(new URL("/", request.nextUrl.origin));
-        }
-        return true;
-      }
-
-      // Every other matched route requires a session.
-      return isLoggedIn;
-    },
+    authorized,
   },
 });

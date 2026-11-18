@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 
@@ -10,6 +10,11 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "MassFlow AI",
   description: "MassFlow AI — the frontend for MassFlow.",
+};
+
+export const viewport: Viewport = {
+  colorScheme: "light",
+  themeColor: "#f97316",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

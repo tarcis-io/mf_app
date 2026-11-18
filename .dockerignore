@@ -1,0 +1,34 @@
+# Keep the Docker build context small and reproducible. node_modules and the
+# build output are produced inside the image, never copied from the host.
+node_modules
+.next
+out
+build
+
+# VCS / tooling
+.git
+.gitignore
+.vscode
+.idea
+
+# Env files — secrets are injected at runtime by Cloud Run, never baked in.
+.env*
+!.env.example
+
+# Tests and local/CI artifacts (not needed in the production image)
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+coverage
+*.tsbuildinfo
+
+# Docs
+*.md
+
+# Misc
+.DS_Store
+Thumbs.db
+npm-debug.log*
+.pnpm-debug.log*
+.vercel
