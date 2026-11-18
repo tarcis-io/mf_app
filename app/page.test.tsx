@@ -1,5 +1,12 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// Home renders inside LoggedInTemplate, whose header includes the async
+// UserMenu Server Component (which reads the auth session). Stub it so this
+// test stays focused on the home page's own content.
+vi.mock("@/components/user-menu", () => ({
+  default: () => <div data-testid="user-menu" />,
+}));
 
 import Home from "./page";
 

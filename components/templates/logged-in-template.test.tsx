@@ -1,5 +1,11 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// UserMenu is an async Server Component that reads the auth session; it has its
+// own tests. Stub it here so these tests stay focused on the template's layout.
+vi.mock("@/components/user-menu", () => ({
+  default: () => <div data-testid="user-menu" />,
+}));
 
 import LoggedInTemplate from "./logged-in-template";
 

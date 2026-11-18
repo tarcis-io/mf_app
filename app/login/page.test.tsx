@@ -8,6 +8,12 @@ vi.mock("@/components/neural-network-background", () => ({
   default: () => <div data-testid="neural-network-background" />,
 }));
 
+// `@/auth` pulls in the full Auth.js runtime (and real OAuth config). The page
+// only needs `signIn` to exist as a server action, so stub the module.
+vi.mock("@/auth", () => ({
+  signIn: vi.fn(),
+}));
+
 import Login from "./page";
 
 describe("Login page", () => {
@@ -29,12 +35,17 @@ describe("Login page", () => {
     expect(screen.getByAltText("MassFlow AI")).toBeInTheDocument();
   });
 
-  it('renders a "Continue with Google" button', () => {
+  it('renders a "Continue with Google" button that submits the sign-in form', () => {
     render(<Login />);
 
-    expect(
-      screen.getByRole("button", { name: /continue with google/i }),
-    ).toBeInTheDocument();
+    const button = screen.getByRole("button", {
+      name: /continue with google/i,
+    });
+    expect(button).toBeInTheDocument();
+    // The button triggers Google sign-in by submitting its enclosing form
+    // (a server action), so it must be a submit button inside a <form>.
+    expect(button).toHaveAttribute("type", "submit");
+    expect(button.closest("form")).not.toBeNull();
   });
 
   it("renders the decorative background", () => {
