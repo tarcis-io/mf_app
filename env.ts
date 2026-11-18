@@ -21,10 +21,21 @@ const ALWAYS_REQUIRED = [
 ] as const;
 
 /**
- * Variables required only in production. `AUTH_URL` lets Auth.js build correct
- * OAuth callback URLs behind a proxy; locally it's inferred from the request.
+ * Variables required only in production (presence + non-empty).
+ *   - `AUTH_URL` lets Auth.js build correct OAuth callback URLs behind a proxy;
+ *     locally it's inferred from the request.
+ *
+ * `AUTH_TRUST_HOST` is also production-required but is validated separately
+ * (see `validateTrustHost`) because its *value* matters, not just its presence.
  */
 const PRODUCTION_REQUIRED = ["AUTH_URL"] as const;
+
+/**
+ * Values accepted as "on" for `AUTH_TRUST_HOST`. Auth.js trusts the proxy's
+ * forwarded Host header only when this is truthy; `"false"`/`"0"` leave the app
+ * rejecting requests with `UntrustedHost` at sign-in. See DEPLOYMENT.md.
+ */
+const TRUTHY = new Set(["true", "1"]);
 
 /** True during `next build` (static analysis / prerender), where secrets are absent. */
 function isBuildPhase(): boolean {
@@ -58,4 +69,28 @@ export function validateEnv(): void {
         `Generate AUTH_SECRET with: npx auth secret`,
     );
   }
+
+  validateTrustHost();
+}
+
+/**
+ * In production, `AUTH_TRUST_HOST` must be present *and* set to a truthy value
+ * (`"true"`/`"1"`). Behind a TLS-terminating proxy like Cloud Run, Auth.js
+ * rejects every request with `UntrustedHost` unless this is enabled — the single
+ * most common "works locally, breaks in prod" failure (see DEPLOYMENT.md). It's
+ * checked separately from the presence-only vars because `AUTH_TRUST_HOST=false`
+ * would satisfy a mere presence check yet still break sign-in.
+ */
+function validateTrustHost(): void {
+  if (process.env.NODE_ENV !== "production") return;
+
+  const value = process.env.AUTH_TRUST_HOST?.trim().toLowerCase();
+  if (value && TRUTHY.has(value)) return;
+
+  throw new Error(
+    `AUTH_TRUST_HOST must be set to "true" in production (got ` +
+      `${process.env.AUTH_TRUST_HOST === undefined ? "undefined" : `"${process.env.AUTH_TRUST_HOST}"`}).\n` +
+      `Behind a reverse proxy (e.g. Cloud Run), Auth.js otherwise rejects ` +
+      `requests with "UntrustedHost" at sign-in. See DEPLOYMENT.md.`,
+  );
 }

@@ -16,10 +16,17 @@ function clearAll() {
     "AUTH_GOOGLE_ID",
     "AUTH_GOOGLE_SECRET",
     "AUTH_URL",
+    "AUTH_TRUST_HOST",
     "NEXT_PHASE",
   ]) {
     vi.stubEnv(key, undefined as unknown as string);
   }
+}
+
+/** The production-only vars beyond the always-required secrets. */
+function setProductionExtras() {
+  vi.stubEnv("AUTH_URL", "https://app.massflow.ai");
+  vi.stubEnv("AUTH_TRUST_HOST", "true");
 }
 
 function setSecrets() {
@@ -67,11 +74,11 @@ describe("validateEnv", () => {
     expect(() => validateEnv()).toThrow(/AUTH_URL/);
   });
 
-  it("passes in production when AUTH_URL is also set", () => {
+  it("passes in production when AUTH_URL and AUTH_TRUST_HOST are also set", () => {
     clearAll();
     vi.stubEnv("NODE_ENV", "production");
     setSecrets();
-    vi.stubEnv("AUTH_URL", "https://app.massflow.ai");
+    setProductionExtras();
 
     expect(() => validateEnv()).not.toThrow();
   });
@@ -80,6 +87,48 @@ describe("validateEnv", () => {
     clearAll();
     vi.stubEnv("NODE_ENV", "development");
     setSecrets();
+
+    expect(() => validateEnv()).not.toThrow();
+  });
+
+  it("requires AUTH_TRUST_HOST in production", () => {
+    clearAll();
+    vi.stubEnv("NODE_ENV", "production");
+    setSecrets();
+    vi.stubEnv("AUTH_URL", "https://app.massflow.ai");
+    // AUTH_TRUST_HOST intentionally absent.
+
+    expect(() => validateEnv()).toThrow(/AUTH_TRUST_HOST/);
+  });
+
+  it("rejects a falsy AUTH_TRUST_HOST in production (present but not truthy)", () => {
+    clearAll();
+    vi.stubEnv("NODE_ENV", "production");
+    setSecrets();
+    vi.stubEnv("AUTH_URL", "https://app.massflow.ai");
+    // A mere presence check would pass this; the value must be truthy.
+    vi.stubEnv("AUTH_TRUST_HOST", "false");
+
+    expect(() => validateEnv()).toThrow(/AUTH_TRUST_HOST/);
+  });
+
+  it('accepts "true"/"1" (any case, surrounding space) for AUTH_TRUST_HOST', () => {
+    for (const value of ["true", "TRUE", "1", "  true  "]) {
+      clearAll();
+      vi.stubEnv("NODE_ENV", "production");
+      setSecrets();
+      vi.stubEnv("AUTH_URL", "https://app.massflow.ai");
+      vi.stubEnv("AUTH_TRUST_HOST", value);
+
+      expect(() => validateEnv(), `value: ${JSON.stringify(value)}`).not.toThrow();
+    }
+  });
+
+  it("does not require AUTH_TRUST_HOST outside production", () => {
+    clearAll();
+    vi.stubEnv("NODE_ENV", "development");
+    setSecrets();
+    // AUTH_TRUST_HOST intentionally absent.
 
     expect(() => validateEnv()).not.toThrow();
   });
