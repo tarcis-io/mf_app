@@ -160,4 +160,86 @@ describe("validateEnv", () => {
 
     expect(() => validateEnv()).not.toThrow();
   });
+
+  describe("single-pass aggregation", () => {
+    /** Run validateEnv once and return the thrown Error's message. */
+    function messageFrom(): string {
+      try {
+        validateEnv();
+      } catch (err) {
+        return (err as Error).message;
+      }
+      throw new Error("expected validateEnv to throw, but it did not");
+    }
+
+    it("reports secret and production problems together in a single throw", () => {
+      clearAll();
+      vi.stubEnv("NODE_ENV", "production");
+      // Nothing set: all three secrets missing, AUTH_URL missing, and
+      // AUTH_TRUST_HOST missing. A single validateEnv() call must surface every
+      // problem at once — not just the always-required set, and not one per run.
+      const message = messageFrom();
+
+      expect(message).toContain("AUTH_SECRET");
+      expect(message).toContain("AUTH_GOOGLE_ID");
+      expect(message).toContain("AUTH_GOOGLE_SECRET");
+      expect(message).toContain("AUTH_URL");
+      expect(message).toContain("AUTH_TRUST_HOST");
+    });
+
+    it("aggregates a missing secret with a present-but-invalid AUTH_TRUST_HOST", () => {
+      clearAll();
+      vi.stubEnv("NODE_ENV", "production");
+      // Two of three secrets present; one missing. AUTH_URL fine. AUTH_TRUST_HOST
+      // present but falsy — the case a presence-only check would miss. Both the
+      // missing secret and the bad AUTH_TRUST_HOST must appear in one message.
+      vi.stubEnv("AUTH_GOOGLE_ID", "id");
+      vi.stubEnv("AUTH_GOOGLE_SECRET", "secret");
+      vi.stubEnv("AUTH_URL", "https://app.massflow.ai");
+      vi.stubEnv("AUTH_TRUST_HOST", "false");
+      // AUTH_SECRET intentionally missing.
+      const message = messageFrom();
+
+      expect(message).toContain("AUTH_SECRET");
+      expect(message).toContain("AUTH_TRUST_HOST");
+      // The actual bad value is echoed to aid debugging.
+      expect(message).toContain('"false"');
+    });
+
+    it("does not report a variable that is valid", () => {
+      clearAll();
+      vi.stubEnv("NODE_ENV", "production");
+      // Everything valid except AUTH_TRUST_HOST, which is absent. Only the
+      // failing variable should appear as a problem line.
+      setSecrets();
+      vi.stubEnv("AUTH_URL", "https://app.massflow.ai");
+      // AUTH_TRUST_HOST intentionally absent.
+      const message = messageFrom();
+
+      // Inspect the bulleted problem lines (`  - ...`) only. The trailing
+      // remediation hint always names AUTH_SECRET ("Generate AUTH_SECRET with
+      // ..."), so asserting on the whole message would give a false positive;
+      // the problem lines are what actually report failures.
+      const problemLines = message
+        .split("\n")
+        .filter((line) => line.trimStart().startsWith("- "));
+
+      expect(problemLines).toHaveLength(1);
+      expect(problemLines[0]).toContain("AUTH_TRUST_HOST");
+      // The satisfied variables are not reported as problems.
+      expect(problemLines[0]).not.toContain("AUTH_SECRET");
+      expect(problemLines[0]).not.toContain("AUTH_URL");
+    });
+
+    it("still includes the remediation hint", () => {
+      clearAll();
+      vi.stubEnv("NODE_ENV", "development");
+      // Missing secrets in dev — the hint about .env.local / npx auth secret
+      // must survive the aggregated-message format.
+      const message = messageFrom();
+
+      expect(message).toContain(".env.local");
+      expect(message).toContain("npx auth secret");
+    });
+  });
 });

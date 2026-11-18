@@ -76,9 +76,16 @@ export default function NeuralNetworkBackground() {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.scale(dpr, dpr);
       createNodes();
+      // Resizing the backing store (`canvas.width`/`height` above) clears the
+      // canvas. While animating, the next `step` repaints immediately; but in
+      // the reduced-motion (static) state there is no loop, so repaint here or
+      // the canvas would be left blank until the motion preference changes.
+      // `animationFrame === 0` means the loop isn't running.
+      if (animationFrame === 0) draw();
     };
 
-    const step = () => {
+    // Advance every node one frame: drift, then bounce off / clamp to the edges.
+    const advance = () => {
       for (const node of nodes) {
         node.x += node.vx;
         node.y += node.vy;
@@ -89,7 +96,12 @@ export default function NeuralNetworkBackground() {
         node.x = Math.min(Math.max(node.x, 0), width);
         node.y = Math.min(Math.max(node.y, 0), height);
       }
+    };
 
+    // Paint the current node/link positions. Split from `advance` so the
+    // reduced-motion path can render a single static frame without ever moving
+    // the nodes (see below).
+    const draw = () => {
       ctx.clearRect(0, 0, width, height);
 
       for (let i = 0; i < nodes.length; i++) {
@@ -119,17 +131,52 @@ export default function NeuralNetworkBackground() {
         ctx.arc(node.x, node.y, 2, 0, Math.PI * 2);
         ctx.fill();
       }
+    };
 
+    const step = () => {
+      advance();
+      draw();
       animationFrame = requestAnimationFrame(step);
     };
 
+    // Respect the OS "reduce motion" accessibility preference: users who enable
+    // it (often for vestibular/motion sensitivity) should not get a perpetually
+    // animating backdrop. When reduced motion is requested we still render the
+    // network — a single static frame — but never start the rAF loop. The
+    // preference is honored live: toggling it starts or stops the animation
+    // without a reload.
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+    const start = () => {
+      // Guard against a double-start (e.g. a `change` event firing while the
+      // loop is already running): a leaked frame id would never be cancelled.
+      if (animationFrame) return;
+      animationFrame = requestAnimationFrame(step);
+    };
+
+    const stop = () => {
+      cancelAnimationFrame(animationFrame);
+      animationFrame = 0;
+    };
+
+    const applyMotionPreference = () => {
+      if (reducedMotion.matches) {
+        stop();
+        draw(); // hold a static frame
+      } else {
+        start();
+      }
+    };
+
     resize();
-    animationFrame = requestAnimationFrame(step);
+    applyMotionPreference();
     window.addEventListener("resize", resize);
+    reducedMotion.addEventListener("change", applyMotionPreference);
 
     return () => {
-      cancelAnimationFrame(animationFrame);
+      stop();
       window.removeEventListener("resize", resize);
+      reducedMotion.removeEventListener("change", applyMotionPreference);
     };
   }, []);
 

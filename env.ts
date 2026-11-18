@@ -13,22 +13,30 @@
  * build phase via `NEXT_PHASE` and skip there.
  */
 
-/** Variables required in every runtime environment. */
-const ALWAYS_REQUIRED = [
-  "AUTH_SECRET",
-  "AUTH_GOOGLE_ID",
-  "AUTH_GOOGLE_SECRET",
-] as const;
-
 /**
- * Variables required only in production (presence + non-empty).
- *   - `AUTH_URL` lets Auth.js build correct OAuth callback URLs behind a proxy;
- *     locally it's inferred from the request.
- *
- * `AUTH_TRUST_HOST` is also production-required but is validated separately
- * (see `validateTrustHost`) because its *value* matters, not just its presence.
+ * A single environment-variable requirement.
+ *   - `name`     — the variable's name (used in error output).
+ *   - `validate` — returns `true` when the current value is acceptable.
+ *   - `describe` — a tailored one-line explanation of *this* variable's
+ *     problem, shown when it fails. Kept per-check so each failure carries its
+ *     own guidance (a bare "AUTH_TRUST_HOST is missing" would lose the Cloud
+ *     Run / `UntrustedHost` context that trips people up).
  */
-const PRODUCTION_REQUIRED = ["AUTH_URL"] as const;
+interface EnvCheck {
+  name: string;
+  validate: (value: string | undefined) => boolean;
+  describe: (value: string | undefined) => string;
+}
+
+/** Present and non-empty (after trimming). The baseline for a required var. */
+function isNonEmpty(value: string | undefined): boolean {
+  return value !== undefined && value.trim() !== "";
+}
+
+/** Render a value for error messages: `undefined` unquoted, otherwise quoted. */
+function show(value: string | undefined): string {
+  return value === undefined ? "undefined" : `"${value}"`;
+}
 
 /**
  * Values accepted as "on" for `AUTH_TRUST_HOST`. Auth.js trusts the proxy's
@@ -37,60 +45,83 @@ const PRODUCTION_REQUIRED = ["AUTH_URL"] as const;
  */
 const TRUTHY = new Set(["true", "1"]);
 
+/**
+ * Variables required in every runtime environment (presence + non-empty).
+ * These are the OAuth/session secrets the app cannot function without.
+ */
+const ALWAYS_REQUIRED: EnvCheck[] = [
+  "AUTH_SECRET",
+  "AUTH_GOOGLE_ID",
+  "AUTH_GOOGLE_SECRET",
+].map((name) => ({
+  name,
+  validate: isNonEmpty,
+  describe: () => `${name} is required but missing or empty.`,
+}));
+
+/**
+ * Variables required only in production. This is the single source of truth for
+ * the production env contract (keep it in sync with DEPLOYMENT.md):
+ *   - `AUTH_URL` lets Auth.js build correct OAuth callback URLs behind a proxy;
+ *     locally it's inferred from the request. Presence + non-empty.
+ *   - `AUTH_TRUST_HOST` must be present *and* truthy (`"true"`/`"1"`): its
+ *     *value* matters, not just its presence, because `AUTH_TRUST_HOST=false`
+ *     satisfies a mere presence check yet still breaks sign-in. Behind a
+ *     TLS-terminating proxy like Cloud Run, Auth.js rejects every request with
+ *     `UntrustedHost` unless this is enabled — the single most common "works
+ *     locally, breaks in prod" failure.
+ */
+const PRODUCTION_REQUIRED: EnvCheck[] = [
+  {
+    name: "AUTH_URL",
+    validate: isNonEmpty,
+    describe: () =>
+      `AUTH_URL is required in production but missing or empty. Set it to the ` +
+      `deployed public origin (e.g. https://mf-app-xxxxx.a.run.app).`,
+  },
+  {
+    name: "AUTH_TRUST_HOST",
+    validate: (value) => {
+      const normalized = value?.trim().toLowerCase();
+      return normalized !== undefined && TRUTHY.has(normalized);
+    },
+    describe: (value) =>
+      `AUTH_TRUST_HOST must be set to "true" in production (got ${show(value)}). ` +
+      `Behind a reverse proxy (e.g. Cloud Run), Auth.js otherwise rejects ` +
+      `requests with "UntrustedHost" at sign-in.`,
+  },
+];
+
 /** True during `next build` (static analysis / prerender), where secrets are absent. */
 function isBuildPhase(): boolean {
   return process.env.NEXT_PHASE === "phase-production-build";
 }
 
 /**
- * Validate that all required environment variables are present and non-empty.
- * Throws a single, descriptive error listing every missing variable at once
- * (rather than failing one at a time). Called once at module load from
- * `@/auth`.
+ * Validate every required environment variable in a single pass. Throws one
+ * descriptive error listing *all* problems at once (rather than failing one at
+ * a time across restarts), with a remediation hint. Called once at module load
+ * from `@/auth`.
  */
 export function validateEnv(): void {
   if (isBuildPhase()) return;
 
-  const required = [
+  const checks = [
     ...ALWAYS_REQUIRED,
     ...(process.env.NODE_ENV === "production" ? PRODUCTION_REQUIRED : []),
   ];
 
-  const missing = required.filter((name) => {
-    const value = process.env[name];
-    return value === undefined || value.trim() === "";
-  });
+  const problems = checks
+    .filter((check) => !check.validate(process.env[check.name]))
+    .map((check) => check.describe(process.env[check.name]));
 
-  if (missing.length > 0) {
+  if (problems.length > 0) {
     throw new Error(
-      `Missing required environment variable(s): ${missing.join(", ")}.\n` +
-        `Copy .env.example to .env.local and fill them in for local dev, or ` +
-        `inject them at deploy time (see DEPLOYMENT.md). ` +
+      `Invalid environment configuration:\n` +
+        problems.map((p) => `  - ${p}`).join("\n") +
+        `\n\nCopy .env.example to .env.local and fill them in for local dev, ` +
+        `or inject them at deploy time (see DEPLOYMENT.md). ` +
         `Generate AUTH_SECRET with: npx auth secret`,
     );
   }
-
-  validateTrustHost();
-}
-
-/**
- * In production, `AUTH_TRUST_HOST` must be present *and* set to a truthy value
- * (`"true"`/`"1"`). Behind a TLS-terminating proxy like Cloud Run, Auth.js
- * rejects every request with `UntrustedHost` unless this is enabled — the single
- * most common "works locally, breaks in prod" failure (see DEPLOYMENT.md). It's
- * checked separately from the presence-only vars because `AUTH_TRUST_HOST=false`
- * would satisfy a mere presence check yet still break sign-in.
- */
-function validateTrustHost(): void {
-  if (process.env.NODE_ENV !== "production") return;
-
-  const value = process.env.AUTH_TRUST_HOST?.trim().toLowerCase();
-  if (value && TRUTHY.has(value)) return;
-
-  throw new Error(
-    `AUTH_TRUST_HOST must be set to "true" in production (got ` +
-      `${process.env.AUTH_TRUST_HOST === undefined ? "undefined" : `"${process.env.AUTH_TRUST_HOST}"`}).\n` +
-      `Behind a reverse proxy (e.g. Cloud Run), Auth.js otherwise rejects ` +
-      `requests with "UntrustedHost" at sign-in. See DEPLOYMENT.md.`,
-  );
 }
