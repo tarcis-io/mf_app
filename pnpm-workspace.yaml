@@ -1,3 +1,6 @@
 allowBuilds:
+  # esbuild ships a platform-native binary via its install script; vitest
+  # needs it, so this build must be allowed to run.
+  esbuild: true
   sharp: false
   unrs-resolver: false

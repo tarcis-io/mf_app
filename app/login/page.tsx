@@ -12,6 +12,7 @@ export default function Login() {
           MassFlow <span className="text-black/50">AI</span>
         </span>
       </div>
+      {/* TODO: wire up to mf_service Google OAuth flow; currently a no-op. */}
       <button
         type="button"
         className="relative flex h-12 items-center justify-center gap-3 rounded-full bg-primary px-6 text-base font-medium text-white transition-colors hover:bg-orange-600"

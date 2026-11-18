@@ -40,8 +40,13 @@ the `LoggedInTemplate` component — see [Layout](#layout) below.
 ## Development
 
 ```bash
-pnpm lint    # eslint (eslint-config-next core-web-vitals + typescript)
+pnpm lint         # eslint (eslint-config-next core-web-vitals + typescript)
+pnpm test         # run the test suite once (Vitest)
+pnpm test:watch   # run tests in watch mode
 ```
+
+Tests use [Vitest](https://vitest.dev) with React Testing Library in a jsdom
+environment. Test files live next to the code they cover as `*.test.tsx`.
 
 ## Layout
 
@@ -52,9 +57,12 @@ mf_app/                            # repository root
 ├── next.config.ts                 # Next.js config (Turbopack + Tailwind)
 ├── tsconfig.json                  # path alias: "@/*" -> "./*"
 ├── eslint.config.mjs
+├── vitest.config.ts               # test runner config (jsdom + "@/*" alias)
+├── vitest.setup.ts                # global test setup (jest-dom matchers)
 ├── README.md
 ├── public/                        # static assets
 ├── components/
+│   ├── neural-network-background.tsx  # decorative animated login backdrop
 │   └── templates/
 │       └── logged-in-template.tsx # shared shell for logged-in pages
 └── app/
