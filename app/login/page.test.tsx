@@ -59,7 +59,7 @@ describe("Login page", () => {
   it("renders the footer with copyright and a contact email link", () => {
     render(<Login />);
 
-    expect(screen.getByText("© 2026 MassFlow AI")).toBeInTheDocument();
+    expect(screen.getByText("© 2027 MassFlow AI")).toBeInTheDocument();
 
     const contact = screen.getByRole("link", { name: "t@rcis.io" });
     expect(contact).toHaveAttribute("href", "mailto:t@rcis.io");

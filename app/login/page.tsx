@@ -39,7 +39,7 @@ export default function Login() {
         </button>
       </form>
       <footer className="absolute inset-x-0 bottom-0 flex flex-col items-center gap-1 py-6 text-sm text-foreground/40">
-        <p>&copy; 2026 MassFlow AI</p>
+        <p>&copy; 2027 MassFlow AI</p>
         <p>
           Developed by{" "}
           <a
