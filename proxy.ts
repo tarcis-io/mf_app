@@ -11,8 +11,8 @@ import { auth, authorized } from "@/auth";
  *   - `style-src 'self' 'unsafe-inline'`: Next/React inject inline styles and
  *     style attributes that cannot carry a nonce; styles are a low-risk sink,
  *     so inline styles are allowed. (Scripts are not.)
- *   - `img-src` allows data: URIs (inlined SVG/icons) and Google's avatar CDN
- *     (user profile images from Google sign-in).
+ *   - `img-src 'self' data:`: same-origin images (e.g. the logo) and data: URIs
+ *     (inlined SVG/icons). The app does not render remote images.
  *   - `connect-src 'self'`: the app makes same-origin requests only today. When
  *     wiring up mf_service (see DEPLOYMENT.md / README), add its origin here.
  *   - `frame-ancestors 'none'`: clickjacking protection (pairs with the static
@@ -26,7 +26,7 @@ function buildCsp(nonce: string): string {
     `default-src 'self'`,
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
     `style-src 'self' 'unsafe-inline'`,
-    `img-src 'self' data: https://lh3.googleusercontent.com`,
+    `img-src 'self' data:`,
     `font-src 'self'`,
     `connect-src 'self'`,
     `object-src 'none'`,
@@ -47,9 +47,7 @@ function buildCsp(nonce: string): string {
  */
 function generateNonce(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary);
+  return btoa(String.fromCharCode(...bytes));
 }
 
 export default auth((req) => {
@@ -58,7 +56,10 @@ export default auth((req) => {
 
   // Re-run the shared gatekeeper against the session Auth.js attached to the
   // request (`req.auth`). `authorized` returns a Response (redirect) or a
-  // boolean. We enforce every outcome here (see the IMPORTANT note above).
+  // boolean. We must enforce every outcome *here*: once a middleware function
+  // is supplied, Auth.js no longer acts on the `authorized` callback's own
+  // boolean, so a bare `false` would otherwise let the request through (see the
+  // regression guard in `proxy.test.ts`).
   const decision = authorized({
     auth: req.auth,
     request: req,
@@ -70,13 +71,13 @@ export default auth((req) => {
     return decision;
   }
 
-  // Protected route while anonymous → reproduce Auth.js's default behavior:
-  // redirect to the sign-in page with a `callbackUrl` so the user returns to
-  // where they were headed after signing in.
+  // Protected route while anonymous → redirect to the sign-in page. We don't
+  // preserve the original destination: after signing in, users always land on
+  // the home page (see the `redirectTo: "/"` in `app/login/page.tsx`).
   if (!decision) {
     const signInUrl = req.nextUrl.clone();
     signInUrl.pathname = "/login";
-    signInUrl.searchParams.set("callbackUrl", req.nextUrl.href);
+    signInUrl.search = "";
     return NextResponse.redirect(signInUrl);
   }
 

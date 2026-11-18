@@ -3,9 +3,9 @@
 # Multi-stage build for Next.js (standalone output) on Cloud Run.
 # See DEPLOYMENT.md for the full deployment guide.
 
-# Pin to the Node major the project targets. node:22-slim keeps the image
+# Pin to the Node major the project targets. node:26-slim keeps the image
 # small while still providing a glibc base (works with Next's native deps).
-ARG NODE_VERSION=22
+ARG NODE_VERSION=26
 ARG PNPM_VERSION=12.21.0
 
 # ---- deps: install production + dev deps (dev needed to build) ----
@@ -26,7 +26,7 @@ WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# Telemetry is noise in CI/containers.
+# Telemetry is noise in container builds.
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm build
 

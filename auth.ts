@@ -15,13 +15,9 @@ validateEnv();
  * identity provider. There is no database adapter, so sessions are stateless
  * JWTs stored in an encrypted cookie.
  *
- * Required environment variables (see `.env.example`):
- *   - AUTH_SECRET        — used to encrypt the session cookie / JWT
- *   - AUTH_GOOGLE_ID     — Google OAuth client ID
- *   - AUTH_GOOGLE_SECRET — Google OAuth client secret
- *
- * `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET` are read automatically by the
- * Google provider from the environment, so they are not referenced here.
+ * The required environment variables are validated in `@/env` and documented
+ * in DEPLOYMENT.md. The Google client ID/secret are read automatically from the
+ * environment by the Google provider, so they are not referenced here.
  */
 
 /** The `authorized` callback's exact signature, derived from Auth.js config. */

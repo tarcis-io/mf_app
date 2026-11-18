@@ -15,13 +15,13 @@
 
 `mf_app` validates these at server startup (`env.ts`, called from `auth.ts`). A missing or empty required variable throws immediately with a descriptive error instead of failing later at first sign-in. Validation is skipped during `next build` (secrets are injected at deploy, not build).
 
-| Variable             | Required                | Description                                                                                 |
-| -------------------- | ----------------------- | ------------------------------------------------------------------------------------------- |
-| `AUTH_SECRET`        | Always                  | Encrypts the session cookie / JWT. Generate with `npx auth secret`. Keep it secret.         |
-| `AUTH_GOOGLE_ID`     | Always                  | Google OAuth client ID.                                                                     |
-| `AUTH_GOOGLE_SECRET` | Always                  | Google OAuth client secret.                                                                 |
-| `AUTH_URL`           | **Production**          | The deployed public origin, e.g. `https://mf-app-xxxxx.a.run.app`. Used to build OAuth callback URLs behind a proxy. Not needed locally (inferred from `localhost`). |
-| `AUTH_TRUST_HOST`    | **Production (Cloud Run)** | Set to `true`. Tells Auth.js to trust the `Host`/`X-Forwarded-Host` headers set by Cloud Run's proxy. Without it, Auth.js rejects requests with `UntrustedHost`. |
+| Variable             | Required                   | Description                                                                                                                                                          |
+| -------------------- | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AUTH_SECRET`        | Always                     | Encrypts the session cookie / JWT. Generate with `npx auth secret`. Keep it secret.                                                                                  |
+| `AUTH_GOOGLE_ID`     | Always                     | Google OAuth client ID.                                                                                                                                              |
+| `AUTH_GOOGLE_SECRET` | Always                     | Google OAuth client secret.                                                                                                                                          |
+| `AUTH_URL`           | **Production**             | The deployed public origin, e.g. `https://mf-app-xxxxx.a.run.app`. Used to build OAuth callback URLs behind a proxy. Not needed locally (inferred from `localhost`). |
+| `AUTH_TRUST_HOST`    | **Production (Cloud Run)** | Set to `true`. Tells Auth.js to trust the `Host`/`X-Forwarded-Host` headers set by Cloud Run's proxy. Without it, Auth.js rejects requests with `UntrustedHost`.     |
 
 Store `AUTH_SECRET`, `AUTH_GOOGLE_ID`, and `AUTH_GOOGLE_SECRET` in **Secret Manager**, not as plaintext env vars (see [Deploy](#deploy-to-cloud-run)). `AUTH_URL` and `AUTH_TRUST_HOST` are not sensitive and can be plain env vars.
 
@@ -67,7 +67,9 @@ docker run --rm -p 8080:8080 --env-file .env.local mf-app:local
 ### 1. Create secrets (once)
 
 ```bash
-printf '%s' "$(npx auth secret --raw 2>/dev/null || openssl rand -base64 33)" \
+# AUTH_SECRET is just a high-entropy random string; this is what `npx auth
+# secret` generates under the hood, without the interactive .env file write.
+printf '%s' "$(openssl rand -base64 33)" \
   | gcloud secrets create AUTH_SECRET --data-file=-
 printf '%s' "<google-client-id>"     | gcloud secrets create AUTH_GOOGLE_ID --data-file=-
 printf '%s' "<google-client-secret>" | gcloud secrets create AUTH_GOOGLE_SECRET --data-file=-
@@ -118,14 +120,14 @@ Then add `$URL/api/auth/callback/google` to the OAuth client's Authorized redire
 
 `mf_app` sends a strict, per-request **Content-Security-Policy** with a fresh nonce (set in `proxy.ts`), plus static hardening headers (`Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, `Cross-Origin-Opener-Policy`) from `next.config.ts`. No extra Cloud Run configuration is required for these.
 
-When you wire up `mf_service`, add its origin to the CSP `connect-src` directive in `proxy.ts` (it's `'self'` only today), or browser fetches to the API will be blocked.
+The directive-by-directive rationale (and the note on adding `mf_service`'s origin to `connect-src` once the API is wired up) lives next to the code in `proxy.ts`.
 
 ## Troubleshooting
 
-| Symptom | Likely cause | Fix |
-| --- | --- | --- |
-| `UntrustedHost` error on sign-in | `AUTH_TRUST_HOST` not set | Set `AUTH_TRUST_HOST=true`. |
-| `redirect_uri_mismatch` from Google | Callback URI not registered / `AUTH_URL` wrong | Register `https://<origin>/api/auth/callback/google`; set `AUTH_URL` to the exact origin. |
-| Container crashes on startup with "Missing required environment variable(s)" | A required secret/env is absent | Provide the listed variables (see [Environment variables](#environment-variables)). |
-| Blank page / scripts blocked in console | CSP nonce not reaching the renderer | Ensure `proxy.ts` is deployed unmodified; the matcher must run on page routes. |
-| Styles missing but page works | `style-src` too strict | The CSP allows `'unsafe-inline'` for styles by design; don't remove it. |
+| Symptom                                                                          | Likely cause                                   | Fix                                                                                                                                                                      |
+| -------------------------------------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `UntrustedHost` error on sign-in                                                 | `AUTH_TRUST_HOST` not set                      | Set `AUTH_TRUST_HOST=true`.                                                                                                                                              |
+| `redirect_uri_mismatch` from Google                                              | Callback URI not registered / `AUTH_URL` wrong | Register `https://<origin>/api/auth/callback/google`; set `AUTH_URL` to the exact origin.                                                                                |
+| Container crashes on startup with "Missing required environment variable(s)"     | A required secret/env is absent                | Provide the listed variables (see [Environment variables](#environment-variables)).                                                                                      |
+| Blank page / scripts blocked in console                                          | CSP nonce not reaching the renderer            | Ensure `proxy.ts` is deployed unmodified; the matcher must run on page routes.                                                                                           |
+| Styles missing / page renders unstyled, console shows `style-src` CSP violations | `'unsafe-inline'` was removed from `style-src` | Restore `style-src 'self' 'unsafe-inline'` in `proxy.ts`. Next/React inject inline styles that cannot carry a nonce, so this is required by design — don't "tighten" it. |

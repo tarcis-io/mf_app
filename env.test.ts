@@ -84,6 +84,25 @@ describe("validateEnv", () => {
     expect(() => validateEnv()).not.toThrow();
   });
 
+  it("does not require AUTH_URL when NODE_ENV is unset", () => {
+    clearAll();
+    // NODE_ENV intentionally left unset (not "production").
+    setSecrets();
+    // AUTH_URL intentionally absent.
+
+    expect(() => validateEnv()).not.toThrow();
+  });
+
+  it("still validates outside the production build phase (dev-server phase)", () => {
+    clearAll();
+    vi.stubEnv("NODE_ENV", "production");
+    // A NEXT_PHASE other than phase-production-build must NOT skip validation.
+    vi.stubEnv("NEXT_PHASE", "phase-development-server");
+    // No secrets at all — this should throw since we're not in the build phase.
+
+    expect(() => validateEnv()).toThrow(/AUTH_SECRET/);
+  });
+
   it("skips all validation during the production build phase", () => {
     clearAll();
     vi.stubEnv("NODE_ENV", "production");

@@ -9,8 +9,11 @@ interface Node {
   vy: number;
 }
 
-const NODE_COUNT = 60;
+const NODE_COUNT = 90;
 const LINK_DISTANCE = 160;
+// Max per-frame drift (px) on each axis; nodes get a random velocity in
+// [-NODE_SPEED, NODE_SPEED]. Kept low so the backdrop stays calm.
+const NODE_SPEED = 0.5;
 
 // The node/link hues come from the theme tokens (`--primary`, `--foreground`
 // in globals.css) so the backdrop tracks the brand automatically; only the
@@ -57,8 +60,8 @@ export default function NeuralNetworkBackground() {
       nodes = Array.from({ length: NODE_COUNT }, () => ({
         x: Math.random() * width,
         y: Math.random() * height,
-        vx: (Math.random() - 0.5) * 0.3,
-        vy: (Math.random() - 0.5) * 0.3,
+        vx: (Math.random() - 0.5) * 2 * NODE_SPEED,
+        vy: (Math.random() - 0.5) * 2 * NODE_SPEED,
       }));
     };
 
@@ -68,6 +71,9 @@ export default function NeuralNetworkBackground() {
       const dpr = window.devicePixelRatio || 1;
       canvas.width = width * dpr;
       canvas.height = height * dpr;
+      // `scale` multiplies the current transform; reset to identity first so
+      // repeated resizes don't compound the dpr factor (2×, then 4×, …).
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.scale(dpr, dpr);
       createNodes();
     };

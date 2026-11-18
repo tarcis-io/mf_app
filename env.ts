@@ -1,16 +1,16 @@
 /**
  * Runtime validation of required environment variables.
  *
- * Auth.js needs `AUTH_SECRET`, `AUTH_GOOGLE_ID`, and `AUTH_GOOGLE_SECRET` to be
- * present, and when deployed behind a proxy (e.g. Cloud Run) it also needs
- * `AUTH_URL` (and usually `AUTH_TRUST_HOST=true`) — see DEPLOYMENT.md. Without
- * these, the app boots fine and then fails confusingly at the first sign-in.
- * This module turns that into an immediate, explicit failure at server start.
+ * Without the required vars the app boots fine and then fails confusingly at
+ * the first sign-in; this module turns that into an immediate, explicit failure
+ * at server start. The authoritative list of variables, which are required
+ * where, and how to supply them lives in DEPLOYMENT.md — the names below must
+ * stay in sync with it.
  *
- * Validation deliberately does NOT run during `next build`: the build step
- * only needs to compile and prerender static output, and in most CI pipelines
- * the real secrets are not present at build time (they're injected at deploy).
- * We detect the build phase via `NEXT_PHASE` and skip there.
+ * Validation deliberately does NOT run during `next build`: the build step only
+ * needs to compile and prerender static output, and the real secrets are
+ * typically absent at build time (they're injected at deploy). We detect the
+ * build phase via `NEXT_PHASE` and skip there.
  */
 
 /** Variables required in every runtime environment. */

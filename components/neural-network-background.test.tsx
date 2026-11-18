@@ -8,6 +8,7 @@ import NeuralNetworkBackground from "./neural-network-background";
 // asserted — we only verify the component mounts, is accessible, and cleans up.
 function stubCanvasContext() {
   const ctx = {
+    setTransform: vi.fn(),
     scale: vi.fn(),
     clearRect: vi.fn(),
     beginPath: vi.fn(),
@@ -61,5 +62,24 @@ describe("NeuralNetworkBackground", () => {
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
 
     expect(() => render(<NeuralNetworkBackground />)).not.toThrow();
+  });
+
+  it("resets the transform to identity before scaling on each resize", () => {
+    const ctx = stubCanvasContext();
+    render(<NeuralNetworkBackground />);
+
+    // Initial layout happens on mount: identity reset, then dpr scale.
+    expect(ctx.setTransform).toHaveBeenCalledWith(1, 0, 0, 1, 0, 0);
+    const callsAfterMount = ctx.setTransform.mock.calls.length;
+
+    // A window resize re-runs layout. The transform must be reset again (so the
+    // dpr factor never compounds across resizes), without throwing.
+    expect(() => window.dispatchEvent(new Event("resize"))).not.toThrow();
+
+    expect(ctx.setTransform.mock.calls.length).toBeGreaterThan(callsAfterMount);
+    // Every reset is to the identity matrix, never an accumulating transform.
+    for (const call of ctx.setTransform.mock.calls) {
+      expect(call).toEqual([1, 0, 0, 1, 0, 0]);
+    }
   });
 });

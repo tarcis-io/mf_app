@@ -1,15 +1,12 @@
 # mf_app
 
-**MassFlow AI** — the frontend for MassFlow: a [Next.js](https://nextjs.org)
-web application that gives users access to MassFlow's metabolomics batch
-processing.
+**MassFlow AI** — the [Next.js](https://nextjs.org) frontend for MassFlow, the
+metabolomics batch-processing platform.
 
-`mf_app` is the browser-facing layer. It talks to
-[mf_service](https://github.com/tarcis-io/mf_service) (`mf_service`) over
-HTTP, which is itself a thin FastAPI boundary over
-[mf_engine](https://github.com/tarcis-io/mf_engine) (`mf_engine`), the core
-processing engine. `mf_app` never calls `mf_engine` directly — all backend
-access goes through `mf_service`.
+`mf_app` is the browser-facing layer. It talks over HTTP to
+[mf_service](https://github.com/tarcis-io/mf_service) (`mf_service`), a thin
+FastAPI boundary over [mf_engine](https://github.com/tarcis-io/mf_engine)
+(`mf_engine`), the core processing engine.
 
 ## Install
 
@@ -114,6 +111,7 @@ environment. Test files live next to the code they cover as `*.test.tsx`.
 mf_app/                                    # repository root
 ├── package.json
 ├── pnpm-workspace.yaml
+├── .nvmrc                                 # Node version for local dev (matches the Dockerfile)
 ├── next.config.ts                         # Next.js config (Turbopack + Tailwind)
 ├── tsconfig.json                          # path alias: "@/*" -> "./*"
 ├── eslint.config.mjs

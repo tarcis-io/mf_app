@@ -1,7 +1,7 @@
 {
   "name": "mf_app",
   "version": "0.1.0",
-  "description": "MassFlow AI: the Next.js frontend for MassFlow, backed by mf_service and mf_engine.",
+  "description": "MassFlow AI — the Next.js frontend for MassFlow, the metabolomics batch-processing platform.",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -33,5 +33,9 @@
     "typescript": "5.9.3",
     "vitest": "5.1.0"
   },
-  "packageManager": "pnpm@12.21.0"
+  "packageManager": "pnpm@12.21.0",
+  "engines": {
+    "node": ">=26 <27",
+    "pnpm": ">=12 <13"
+  }
 }

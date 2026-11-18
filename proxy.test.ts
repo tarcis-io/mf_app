@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { NextResponse } from "next/server";
 
 // We unit-test the proxy's *enforcement + CSP* logic (the part this file owns),
 // with the authorization *decision* injected. So:
@@ -40,18 +41,17 @@ beforeEach(() => {
 });
 
 describe("proxy", () => {
-  it("redirects an anonymous user on a protected route to /login with callbackUrl", () => {
+  it("redirects an anonymous user on a protected route to a clean /login", () => {
     authorized.mockReturnValue(false);
 
     const res = runProxy(makeRequest("/reports/2026", false));
 
     expect(res.status).toBe(307);
-    const location = res.headers.get("Location")!;
-    const target = new URL(location);
+    const target = new URL(res.headers.get("Location")!);
     expect(target.pathname).toBe("/login");
-    expect(target.searchParams.get("callbackUrl")).toBe(
-      "https://app.massflow.ai/reports/2026",
-    );
+    // The original destination is not preserved: no callbackUrl (or any other
+    // query) is carried over — users always land on home after sign-in.
+    expect(target.search).toBe("");
     // A bare redirect carries no CSP.
     expect(res.headers.get("Content-Security-Policy")).toBeNull();
   });
@@ -93,6 +93,31 @@ describe("proxy", () => {
     const second = nonceOf(runProxy(makeRequest("/", true)));
 
     expect(first).not.toBe(second);
+  });
+
+  it("writes the same CSP onto the forwarded request headers, not just the response", () => {
+    authorized.mockReturnValue(true);
+
+    // Capture the options the proxy passes to NextResponse.next so we can
+    // inspect the request headers it forwards. This dual-write is load-bearing:
+    // Next extracts the nonce from the *request's* CSP header to stamp its
+    // injected <script> tags (see the note in proxy.ts).
+    const nextSpy = vi.spyOn(NextResponse, "next");
+
+    const res = runProxy(makeRequest("/", true));
+
+    expect(nextSpy).toHaveBeenCalledOnce();
+    const requestHeaders = nextSpy.mock.calls[0][0]?.request?.headers;
+    const requestCsp = requestHeaders?.get("Content-Security-Policy");
+    const responseCsp = res.headers.get("Content-Security-Policy");
+
+    expect(requestCsp).toBeTruthy();
+    // Request and response must carry the identical policy (same nonce).
+    expect(requestCsp).toBe(responseCsp);
+    // Pre-existing request headers are preserved, not dropped.
+    expect(requestHeaders?.get("x-existing")).toBe("kept");
+
+    nextSpy.mockRestore();
   });
 
   it("does NOT allow an anonymous user through even though a middleware fn is present", () => {

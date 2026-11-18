@@ -9,7 +9,8 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: "MassFlow AI",
-  description: "MassFlow AI — the frontend for MassFlow.",
+  description:
+    "MassFlow AI — the Next.js frontend for MassFlow, the metabolomics batch-processing platform.",
 };
 
 export const viewport: Viewport = {

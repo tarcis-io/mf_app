@@ -16,6 +16,16 @@ describe("UserMenu", () => {
     expect(screen.getByTestId("user-label")).toHaveTextContent("Ada Lovelace");
   });
 
+  it("prefers the name over the email when both are present", () => {
+    render(
+      <UserMenu user={{ name: "Ada Lovelace", email: "ada@example.com" }} />,
+    );
+
+    const label = screen.getByTestId("user-label");
+    expect(label).toHaveTextContent("Ada Lovelace");
+    expect(label).not.toHaveTextContent("ada@example.com");
+  });
+
   it("falls back to the email when no name is present", () => {
     render(<UserMenu user={{ email: "ada@example.com" }} />);
 

@@ -20,7 +20,8 @@ const securityHeaders = [
   // Legacy clickjacking protection; CSP `frame-ancestors 'none'` (in proxy.ts)
   // is the modern equivalent for browsers that honor it.
   { key: "X-Frame-Options", value: "DENY" },
-  // Don't leak full URLs (which may carry callbackUrl params) to other origins.
+  // Don't leak full URLs (Auth.js endpoints can carry callback params) to
+  // other origins.
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   // Deny access to powerful features the app doesn't use.
   {
