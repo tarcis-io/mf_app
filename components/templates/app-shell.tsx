@@ -162,7 +162,6 @@ export default function AppShell({ title, userLabel, children }: AppShellProps) 
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        {/* Brand: logo + app name. */}
         <div className="flex items-center gap-2.5 px-5 py-5">
           <Link
             href="/"
@@ -182,7 +181,6 @@ export default function AppShell({ title, userLabel, children }: AppShellProps) 
           </Link>
         </div>
 
-        {/* Primary links. */}
         <ul className="flex flex-1 flex-col gap-1 px-3 py-2">
           {NAV_ITEMS.map((item) => {
             // A link is active on its own route and on any nested route beneath

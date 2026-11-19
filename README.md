@@ -99,6 +99,7 @@ component — see [Layout](#layout) below.
 
 ```bash
 pnpm lint         # eslint (eslint-config-next core-web-vitals + typescript)
+pnpm typecheck    # generate Next route types, then tsc --noEmit
 pnpm test         # run the test suite once (Vitest)
 pnpm test:watch   # run tests in watch mode
 ```
@@ -138,11 +139,13 @@ mf_app/                                    # repository root
 │       ├── logged-in-template.tsx         # server shell: reads session, composes AppShell
 │       ├── logged-in-template.test.tsx
 │       ├── app-shell.tsx                  # client chrome: fixed header, nav drawer, scrollable main
+│       ├── app-shell.hooks.ts             # drawer drag-to-close + dismiss/scroll-lock hooks
 │       └── app-shell.test.tsx
 └── app/
     ├── layout.tsx                         # root layout (fonts, metadata, viewport)
     ├── globals.css                        # Tailwind entrypoint + theme tokens
-    ├── actions.ts                         # server actions (sign-out)
+    ├── actions.ts                         # server actions (sign-in, sign-out)
+    ├── actions.test.ts
     ├── favicon.ico
     ├── icon.svg
     ├── icon.png
