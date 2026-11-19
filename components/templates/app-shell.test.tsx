@@ -132,11 +132,13 @@ describe("AppShell", () => {
     expect(within(nav).getByText("AI").parentElement).toHaveTextContent(
       "MassFlow AI",
     );
-    // The logo renders as a decorative <img> (empty alt, since the wordmark
-    // beside it carries the name — so it's not queryable by role). Assert it by
-    // test id.
-    const logo = within(nav).getByTestId("brand-logo");
-    expect(logo.tagName).toBe("IMG");
+    // The brand link (its accessible name is the wordmark, since the logo's alt
+    // is empty) wraps a decorative <img>. Reach the logo through that link
+    // rather than a test id. An empty-alt image has the presentation role and
+    // so isn't queryable by role("img") — select the element directly.
+    const brandLink = within(nav).getByRole("link", { name: "MassFlow AI" });
+    const logo = brandLink.querySelector("img");
+    expect(logo).not.toBeNull();
     expect(logo).toHaveAttribute("alt", "");
   });
 
@@ -151,6 +153,20 @@ describe("AppShell", () => {
 
   it("does not mark Home active on a different route", () => {
     usePathname.mockReturnValue("/reports");
+    renderShell();
+
+    const nav = screen.getByRole("navigation", { name: "Primary" });
+    const home = within(nav).getByRole("link", { name: "Home" });
+    expect(home).not.toHaveAttribute("aria-current");
+  });
+
+  it("does not mark the Home link active on a nested route (root is an exact match)", () => {
+    // Guards the root special-case in the active-link rule: `/` must match
+    // only `/`, never by prefix — otherwise Home would be marked active on
+    // every nested path. (Non-root items use a prefix test so they stay active
+    // on their children; that branch gets exercised once a second nav item with
+    // child routes exists in NAV_ITEMS.)
+    usePathname.mockReturnValue("/reports/2024");
     renderShell();
 
     const nav = screen.getByRole("navigation", { name: "Primary" });

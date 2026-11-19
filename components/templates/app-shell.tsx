@@ -3,15 +3,13 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 
 import { signOutAction } from "@/app/actions";
+import {
+  useDrawerDismissAndLock,
+  useDrawerDragToClose,
+} from "@/components/templates/app-shell.hooks";
 
 /**
  * A single primary navigation entry. `href`/`label`/`icon` drive a `<Link>`;
@@ -74,13 +72,6 @@ const MenuIcon = (
 
 const NAV_ITEMS: NavItem[] = [{ href: "/", label: "Home", icon: HomeIcon }];
 
-/**
- * Fraction of the drawer's width a leftward drag must cross to dismiss it on
- * release; a shorter drag snaps back open. Keeps an accidental nudge from
- * closing the menu while still feeling responsive to a deliberate swipe.
- */
-const DRAG_CLOSE_FRACTION = 1 / 3;
-
 interface AppShellProps {
   /** The current page title, shown in the header. */
   title: string;
@@ -110,15 +101,18 @@ export default function AppShell({ title, userLabel, children }: AppShellProps) 
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  // How far (px) the drawer is currently dragged left, or null when not being
-  // dragged. While non-null the drawer follows the finger with no transition;
-  // on release it returns to null so the class-based transform animates the
-  // snap-back or the close.
-  const [dragOffset, setDragOffset] = useState<number | null>(null);
   const navRef = useRef<HTMLElement>(null);
-  const dragStartXRef = useRef<number | null>(null);
 
   const closeDrawer = useCallback(() => setMobileOpen(false), []);
+
+  // Drag-to-close gesture (slide-over only) and the open-drawer behaviors
+  // (Escape to close, focus the drawer, lock background scroll) live in
+  // dedicated hooks; the shell just wires them to its drawer state and element.
+  const { dragOffset, handlers: dragHandlers } = useDrawerDragToClose(
+    navRef,
+    closeDrawer,
+  );
+  useDrawerDismissAndLock(mobileOpen, navRef, closeDrawer);
 
   // Raise a shadow under the fixed header once the main region scrolls away
   // from the top. `main` is the scroll container (not the window), so the
@@ -129,74 +123,6 @@ export default function AppShell({ title, userLabel, children }: AppShellProps) 
     },
     [],
   );
-
-  // Drag-to-close. The drawer tracks a leftward drag and dismisses if the
-  // pointer crosses DRAG_CLOSE_FRACTION of its width; a shorter drag snaps back.
-  //
-  // Pointer events (not touch) so this works with any input that gets the
-  // slide-over: a finger on a phone *and* a mouse in a narrow window — those
-  // are the same layout, and a mouse fires no touch events. It's gated to the
-  // slide-over state only: on `lg`+ the drawer is a static column and must not
-  // be draggable. A press with no movement never crosses the threshold, so
-  // clicks on the links/sign-out still fire.
-  const handlePointerDown = useCallback((event: React.PointerEvent) => {
-    // Primary button / primary pointer only, and only while the drawer is a
-    // slide-over (below Tailwind's `lg`). `matchMedia` is guarded for
-    // environments (e.g. older test DOMs) that don't implement it.
-    if (!event.isPrimary || event.button !== 0) return;
-    const isDesktop =
-      typeof window !== "undefined" &&
-      typeof window.matchMedia === "function" &&
-      window.matchMedia("(min-width: 1024px)").matches;
-    if (isDesktop) return;
-
-    dragStartXRef.current = event.clientX;
-    setDragOffset(0);
-    // Keep receiving move/up even if the pointer leaves the drawer.
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-  }, []);
-
-  const handlePointerMove = useCallback((event: React.PointerEvent) => {
-    if (dragStartXRef.current === null) return;
-    // Clamp to ≤ 0: the drawer can be pulled left (toward closed) but not
-    // dragged right past its open position.
-    const delta = Math.min(0, event.clientX - dragStartXRef.current);
-    setDragOffset(delta);
-  }, []);
-
-  const handlePointerEnd = useCallback(() => {
-    if (dragStartXRef.current === null) return;
-    const delta = dragOffset ?? 0;
-    const width = navRef.current?.offsetWidth ?? 0;
-    dragStartXRef.current = null;
-    // Return control to the class-based transform (which animates the result).
-    setDragOffset(null);
-    if (width > 0 && delta <= -width * DRAG_CLOSE_FRACTION) {
-      closeDrawer();
-    }
-  }, [dragOffset, closeDrawer]);
-
-  // While the mobile drawer is open: close on Escape, move focus into the
-  // drawer, and prevent the page behind from scrolling. None of this runs on
-  // desktop, where the drawer is a static column.
-  useEffect(() => {
-    if (!mobileOpen) return;
-
-    navRef.current?.focus();
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeDrawer();
-    };
-    document.addEventListener("keydown", onKeyDown);
-
-    const { overflow } = document.body.style;
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      document.body.style.overflow = overflow;
-    };
-  }, [mobileOpen, closeDrawer]);
 
   return (
     <div className="flex h-dvh overflow-hidden bg-background">
@@ -217,10 +143,7 @@ export default function AppShell({ title, userLabel, children }: AppShellProps) 
         ref={navRef}
         tabIndex={-1}
         aria-label="Primary"
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerEnd}
-        onPointerCancel={handlePointerEnd}
+        {...dragHandlers}
         // While dragging, follow the finger with no transition. Both `transform`
         // and `translate` are set inline so this wins over the Tailwind
         // translate utility regardless of which CSS property it compiles to; on
@@ -251,7 +174,6 @@ export default function AppShell({ title, userLabel, children }: AppShellProps) 
               alt=""
               width={32}
               height={32}
-              data-testid="brand-logo"
               className="shrink-0"
             />
             <span className="text-base font-semibold tracking-tight">
@@ -263,7 +185,15 @@ export default function AppShell({ title, userLabel, children }: AppShellProps) 
         {/* Primary links. */}
         <ul className="flex flex-1 flex-col gap-1 px-3 py-2">
           {NAV_ITEMS.map((item) => {
-            const active = pathname === item.href;
+            // A link is active on its own route and on any nested route beneath
+            // it (e.g. `/batches` stays active on `/batches/123`). Root (`/`) is
+            // special-cased to an exact match — every path is "beneath" `/`, so
+            // a prefix test there would mark Home active everywhere.
+            const active =
+              item.href === "/"
+                ? pathname === "/"
+                : pathname === item.href ||
+                  pathname.startsWith(`${item.href}/`);
             return (
               <li key={item.href}>
                 <Link

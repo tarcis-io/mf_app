@@ -1,6 +1,6 @@
 import Image from "next/image";
 
-import { signIn } from "@/auth";
+import { signInAction } from "@/app/actions";
 import NeuralNetworkBackground from "@/components/neural-network-background";
 
 // Resolved once when the module is evaluated (build/prerender time), so the
@@ -18,13 +18,7 @@ export default function Login() {
           MassFlow <span className="text-foreground/50">AI</span>
         </span>
       </div>
-      <form
-        action={async () => {
-          "use server";
-          // Redirect to the home page once Google authentication completes.
-          await signIn("google", { redirectTo: "/" });
-        }}
-      >
+      <form action={signInAction}>
         <button
           type="submit"
           className="relative flex h-12 items-center justify-center gap-3 rounded-full bg-primary px-6 text-base font-medium text-background transition-colors hover:bg-primary-hover"

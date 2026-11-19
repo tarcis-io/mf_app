@@ -7,7 +7,7 @@ describe("UserLabel", () => {
   it("shows the signed-in user's name", () => {
     render(<UserLabel user={{ name: "Ada Lovelace" }} />);
 
-    expect(screen.getByTestId("user-label")).toHaveTextContent("Ada Lovelace");
+    expect(screen.getByText("Ada Lovelace")).toBeInTheDocument();
   });
 
   it("prefers the name over the email when both are present", () => {
@@ -15,29 +15,26 @@ describe("UserLabel", () => {
       <UserLabel user={{ name: "Ada Lovelace", email: "ada@example.com" }} />,
     );
 
-    const label = screen.getByTestId("user-label");
-    expect(label).toHaveTextContent("Ada Lovelace");
-    expect(label).not.toHaveTextContent("ada@example.com");
+    expect(screen.getByText("Ada Lovelace")).toBeInTheDocument();
+    // Only the name renders; the email is not shown as a fallback.
+    expect(screen.queryByText("ada@example.com")).toBeNull();
   });
 
   it("falls back to the email when no name is present", () => {
     render(<UserLabel user={{ email: "ada@example.com" }} />);
 
-    expect(screen.getByTestId("user-label")).toHaveTextContent(
-      "ada@example.com",
-    );
+    expect(screen.getByText("ada@example.com")).toBeInTheDocument();
   });
 
   it("renders nothing when there is no user", () => {
     const { container } = render(<UserLabel user={null} />);
 
-    expect(screen.queryByTestId("user-label")).toBeNull();
     expect(container).toBeEmptyDOMElement();
   });
 
   it("renders nothing when name and email are both absent", () => {
-    render(<UserLabel user={{}} />);
+    const { container } = render(<UserLabel user={{}} />);
 
-    expect(screen.queryByTestId("user-label")).toBeNull();
+    expect(container).toBeEmptyDOMElement();
   });
 });

@@ -53,6 +53,14 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  // Strip `data-testid` attributes from the production build. The drawer
+  // backdrop keeps a `data-testid` as its only reliable test hook (it's a
+  // decorative, role-less, text-less element); this keeps that hook out of the
+  // shipped DOM. Applies to production builds only — dev and test keep them, so
+  // the test suite is unaffected. `true` removes the default `^data-testid$`.
+  compiler: {
+    reactRemoveProperties: true,
+  },
   turbopack: {
     rules: {
       "*.css": {

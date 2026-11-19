@@ -8,10 +8,11 @@ vi.mock("@/components/neural-network-background", () => ({
   default: () => <div data-testid="neural-network-background" />,
 }));
 
-// `@/auth` pulls in the full Auth.js runtime (and real OAuth config). The page
-// only needs `signIn` to exist as a server action, so stub the module.
-vi.mock("@/auth", () => ({
-  signIn: vi.fn(),
+// The sign-in control submits a Server Action (`signInAction`), which pulls in
+// the full Auth.js runtime (and real OAuth config). The page only needs the
+// action to exist as a `<form action>` reference, so stub the actions module.
+vi.mock("@/app/actions", () => ({
+  signInAction: vi.fn(),
 }));
 
 import Login from "./page";

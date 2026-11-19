@@ -17,9 +17,5 @@ export default function UserLabel({ user }: UserLabelProps) {
 
   if (!label) return null;
 
-  return (
-    <span className="truncate" data-testid="user-label">
-      {label}
-    </span>
-  );
+  return <span className="truncate">{label}</span>;
 }
