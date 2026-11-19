@@ -30,7 +30,7 @@ export default function ErrorPage({ code, message }: ErrorPageProps) {
       <p className="bg-linear-to-b from-foreground/60 to-foreground/40 bg-clip-text text-8xl font-bold tracking-tight text-transparent sm:text-9xl">
         {code}
       </p>
-      <p className="max-w-md text-lg text-foreground/60">{message}</p>
+      <p className="max-w-lg text-lg text-foreground/60">{message}</p>
       <Link
         href="/"
         className="mt-2 inline-flex h-12 items-center justify-center rounded-full border border-foreground/15 px-6 text-base font-medium text-foreground/80 outline-none transition-colors hover:border-foreground/25 hover:bg-foreground/[.04] hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary"
