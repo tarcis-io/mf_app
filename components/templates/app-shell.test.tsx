@@ -161,17 +161,90 @@ describe("AppShell", () => {
   });
 
   it("does not mark the Home link active on a nested route (root is an exact match)", () => {
-    // Guards the root special-case in the active-link rule: `/` must match
-    // only `/`, never by prefix — otherwise Home would be marked active on
-    // every nested path. (Non-root items use a prefix test so they stay active
-    // on their children; that branch gets exercised once a second nav item with
-    // child routes exists in NAV_ITEMS.)
-    usePathname.mockReturnValue("/reports/2024");
+    // Guards the root special-case in the active-link rule: `/` must match only
+    // `/`, never by prefix — otherwise Home would be marked active on every
+    // nested path. (The non-root prefix branch is covered by the Batches cases
+    // below.)
+    usePathname.mockReturnValue("/batches/123");
     renderShell();
 
     const nav = screen.getByRole("navigation", { name: "Primary" });
     const home = within(nav).getByRole("link", { name: "Home" });
     expect(home).not.toHaveAttribute("aria-current");
+  });
+
+  it("renders a link for every nav item (primary and secondary)", () => {
+    renderShell();
+
+    const nav = screen.getByRole("navigation", { name: "Primary" });
+    for (const name of ["Home", "Batches", "Settings", "About"]) {
+      const link = within(nav).getByRole("link", { name });
+      expect(link).toHaveAttribute(
+        "href",
+        name === "Home" ? "/" : `/${name.toLowerCase()}`,
+      );
+    }
+  });
+
+  it("separates the nav into groups with dividers (after the title, before the secondary group)", () => {
+    renderShell();
+
+    const nav = screen.getByRole("navigation", { name: "Primary" });
+    // Two <hr> dividers inside the drawer: one under the brand, one before the
+    // secondary (Settings/About) group. The sign-out block uses a bordered div
+    // (not an <hr>), so it isn't counted here.
+    expect(within(nav).getAllByRole("separator")).toHaveLength(2);
+  });
+
+  it("orders the drawer: brand, primary links, secondary links, then sign out", () => {
+    renderShell();
+
+    const nav = screen.getByRole("navigation", { name: "Primary" });
+    // Compare document order of representative elements. getByRole returns the
+    // same DOM nodes the user tabs through, so their order here is their visual
+    // order in the column.
+    const brand = within(nav).getByRole("link", { name: "MassFlow AI" });
+    const home = within(nav).getByRole("link", { name: "Home" });
+    const settings = within(nav).getByRole("link", { name: "Settings" });
+    const signOut = within(nav).getByRole("button", { name: /sign out/i });
+
+    const order = [brand, home, settings, signOut];
+    for (let i = 0; i < order.length - 1; i++) {
+      // Node.compareDocumentPosition: FOLLOWING (4) means the arg comes after.
+      expect(
+        order[i].compareDocumentPosition(order[i + 1]) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
+  });
+
+  it("marks a non-root nav item active on its own route", () => {
+    usePathname.mockReturnValue("/settings");
+    renderShell();
+
+    const nav = screen.getByRole("navigation", { name: "Primary" });
+    expect(
+      within(nav).getByRole("link", { name: "Settings" }),
+    ).toHaveAttribute("aria-current", "page");
+    // Sibling items are not active.
+    expect(within(nav).getByRole("link", { name: "Home" })).not.toHaveAttribute(
+      "aria-current",
+    );
+    expect(
+      within(nav).getByRole("link", { name: "Batches" }),
+    ).not.toHaveAttribute("aria-current");
+  });
+
+  it("keeps a non-root nav item active on its nested routes (prefix match)", () => {
+    // The prefix branch of the active rule: /batches stays active on a child
+    // route like /batches/123, so the parent link highlights on detail pages.
+    usePathname.mockReturnValue("/batches/123");
+    renderShell();
+
+    const nav = screen.getByRole("navigation", { name: "Primary" });
+    expect(
+      within(nav).getByRole("link", { name: "Batches" }),
+    ).toHaveAttribute("aria-current", "page");
   });
 
   it("renders Sign out as a submit button inside a form", () => {

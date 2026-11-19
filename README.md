@@ -83,17 +83,20 @@ wired up, add its origin to the CSP `connect-src` directive in `proxy.ts`.
 
 ## Pages
 
-| Path           | Description                                               | Access        |
-| -------------- | --------------------------------------------------------- | ------------- |
-| `/`            | Home page (logged-in area).                               | Authenticated |
-| `/login`       | Login page.                                               | Public        |
-| `/api/auth/*`  | Auth.js OAuth endpoints (sign in/out, callback, session). | Public        |
+| Path          | Description                                               | Access        |
+| ------------- | --------------------------------------------------------- | ------------- |
+| `/api/auth/*` | Auth.js OAuth endpoints (sign in/out, callback, session). | Public        |
+| `/login`      | Login page.                                               | Public        |
+| `/`           | Home page.                                                | Authenticated |
+| `/about`      | About page.                                               | Authenticated |
+| `/batches`    | Batches page.                                             | Authenticated |
+| `/settings`   | Settings page.                                            | Authenticated |
 
 All routes except `/login` require an authenticated session; unauthenticated
 requests are redirected to `/login` by the proxy (see
-[Authentication](#authentication) and `proxy.ts`). Logged-in pages (the home
-page today, more to come) share a common shell via the `LoggedInTemplate`
-component — see [Layout](#layout) below.
+[Authentication](#authentication) and `proxy.ts`). Logged-in pages share a
+common shell via the `LoggedInTemplate` component — see [Layout](#layout)
+below.
 
 ## Development
 
@@ -154,8 +157,17 @@ mf_app/                                    # repository root
     ├── page.test.tsx
     ├── api/
     │   └── auth/[...nextauth]/route.ts    # Auth.js OAuth endpoints
-    └── login/
-        ├── page.tsx                       # "/login" — login page
+    │── login/
+    │   ├── page.tsx                       # "/login" — login page
+    │   └── page.test.tsx
+    ├── about/
+    │   ├── page.tsx                       # "/about" — about page
+    │   └── page.test.tsx
+    ├── batches/
+    │   ├── page.tsx                       # "/batches" — batches page
+    │   └── page.test.tsx
+    └── settings/
+        ├── page.tsx                       # "/settings" — settings page
         └── page.test.tsx
 ```
 

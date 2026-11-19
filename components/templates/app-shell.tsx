@@ -12,9 +12,9 @@ import {
 } from "@/components/templates/app-shell.hooks";
 
 /**
- * A single primary navigation entry. `href`/`label`/`icon` drive a `<Link>`;
- * active state is derived from the current pathname. Adding a page later is a
- * one-line addition to `NAV_ITEMS`.
+ * A single navigation entry. `href`/`label`/`icon` drive a `<Link>`; active
+ * state is derived from the current pathname. Adding a page later is a one-line
+ * addition to `PRIMARY_NAV_ITEMS` or `SECONDARY_NAV_ITEMS`.
  */
 interface NavItem {
   href: string;
@@ -70,7 +70,75 @@ const MenuIcon = (
   </svg>
 );
 
-const NAV_ITEMS: NavItem[] = [{ href: "/", label: "Home", icon: HomeIcon }];
+const BatchesIcon = (
+  <svg
+    aria-hidden="true"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="h-5 w-5 shrink-0"
+  >
+    <path d="M12 3 3 7.5l9 4.5 9-4.5L12 3Z" />
+    <path d="m3 12 9 4.5L21 12" />
+    <path d="m3 16.5 9 4.5 9-4.5" />
+  </svg>
+);
+
+const SettingsIcon = (
+  <svg
+    aria-hidden="true"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="h-5 w-5 shrink-0"
+  >
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
+  </svg>
+);
+
+const AboutIcon = (
+  <svg
+    aria-hidden="true"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="h-5 w-5 shrink-0"
+  >
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 16v-4" />
+    <path d="M12 8h.01" />
+  </svg>
+);
+
+/**
+ * Primary destinations — the core product surface, shown at the top of the
+ * drawer. Adding a page here is a one-line addition.
+ */
+const PRIMARY_NAV_ITEMS: NavItem[] = [
+  { href: "/", label: "Home", icon: HomeIcon },
+  { href: "/batches", label: "Batches", icon: BatchesIcon },
+];
+
+/**
+ * Secondary/"meta" destinations — visited occasionally rather than as part of
+ * the main task loop, so they sit below the primary links (but above the
+ * sign-out action). Same rendering as the primary items; only the grouping
+ * differs.
+ */
+const SECONDARY_NAV_ITEMS: NavItem[] = [
+  { href: "/settings", label: "Settings", icon: SettingsIcon },
+  { href: "/about", label: "About", icon: AboutIcon },
+];
 
 interface AppShellProps {
   /** The current page title, shown in the header. */
@@ -104,6 +172,36 @@ export default function AppShell({ title, userLabel, children }: AppShellProps) 
   const navRef = useRef<HTMLElement>(null);
 
   const closeDrawer = useCallback(() => setMobileOpen(false), []);
+
+  // Render one nav entry. Kept as a single helper so the primary and secondary
+  // lists share identical markup and the active-link rule lives in one place.
+  // A link is active on its own route and on any nested route beneath it (e.g.
+  // `/batches` stays active on `/batches/123`). Root (`/`) is special-cased to
+  // an exact match — every path is "beneath" `/`, so a prefix test there would
+  // mark Home active everywhere.
+  const renderNavItem = (item: NavItem) => {
+    const active =
+      item.href === "/"
+        ? pathname === "/"
+        : pathname === item.href || pathname.startsWith(`${item.href}/`);
+    return (
+      <li key={item.href}>
+        <Link
+          href={item.href}
+          onClick={closeDrawer}
+          aria-current={active ? "page" : undefined}
+          className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary motion-reduce:transition-none ${
+            active
+              ? "bg-primary text-background"
+              : "text-sidebar-foreground/80 hover:bg-sidebar-hover hover:text-sidebar-foreground"
+          }`}
+        >
+          {item.icon}
+          {item.label}
+        </Link>
+      </li>
+    );
+  };
 
   // Drag-to-close gesture (slide-over only) and the open-drawer behaviors
   // (Escape to close, focus the drawer, lock background scroll) live in
@@ -181,35 +279,23 @@ export default function AppShell({ title, userLabel, children }: AppShellProps) 
           </Link>
         </div>
 
+        {/* Divider under the brand, separating it from the nav links. */}
+        <hr className="border-t border-sidebar-border" />
+
+        {/* Primary destinations. `flex-1` lets this list take the free space so
+            the secondary group below it is pushed toward the bottom (but stays
+            above the sign-out block). */}
         <ul className="flex flex-1 flex-col gap-1 px-3 py-2">
-          {NAV_ITEMS.map((item) => {
-            // A link is active on its own route and on any nested route beneath
-            // it (e.g. `/batches` stays active on `/batches/123`). Root (`/`) is
-            // special-cased to an exact match — every path is "beneath" `/`, so
-            // a prefix test there would mark Home active everywhere.
-            const active =
-              item.href === "/"
-                ? pathname === "/"
-                : pathname === item.href ||
-                  pathname.startsWith(`${item.href}/`);
-            return (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  onClick={closeDrawer}
-                  aria-current={active ? "page" : undefined}
-                  className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary motion-reduce:transition-none ${
-                    active
-                      ? "bg-primary text-background"
-                      : "text-sidebar-foreground/80 hover:bg-sidebar-hover hover:text-sidebar-foreground"
-                  }`}
-                >
-                  {item.icon}
-                  {item.label}
-                </Link>
-              </li>
-            );
-          })}
+          {PRIMARY_NAV_ITEMS.map(renderNavItem)}
+        </ul>
+
+        {/* Divider before the secondary ("meta") destinations. */}
+        <hr className="border-t border-sidebar-border" />
+
+        {/* Secondary destinations (Settings, About): lower-frequency pages,
+            grouped apart from the primary list but above the sign-out action. */}
+        <ul className="flex flex-col gap-1 px-3 py-2">
+          {SECONDARY_NAV_ITEMS.map(renderNavItem)}
         </ul>
 
         {/* Sign out, pinned to the bottom and separated from the nav links —
