@@ -128,18 +128,21 @@ mf_app/                                    # repository root
 ├── DEPLOYMENT.md                          # Cloud Run deployment guide (env contract, OAuth)
 ├── README.md
 ├── public/
-│   └── logo.svg                           # wordmark logo (login page)
+│   └── logo.svg                           # wordmark logo (login page + drawer)
 ├── components/
 │   ├── neural-network-background.tsx      # decorative animated login backdrop
 │   ├── neural-network-background.test.tsx
-│   ├── user-menu.tsx                      # signed-in user + sign-out control
-│   ├── user-menu.test.tsx
+│   ├── user-label.tsx                     # signed-in user's name/email (header)
+│   ├── user-label.test.tsx
 │   └── templates/
-│       ├── logged-in-template.tsx         # shared shell for logged-in pages
-│       └── logged-in-template.test.tsx
+│       ├── logged-in-template.tsx         # server shell: reads session, composes AppShell
+│       ├── logged-in-template.test.tsx
+│       ├── app-shell.tsx                  # client chrome: fixed header, nav drawer, scrollable main
+│       └── app-shell.test.tsx
 └── app/
     ├── layout.tsx                         # root layout (fonts, metadata, viewport)
     ├── globals.css                        # Tailwind entrypoint + theme tokens
+    ├── actions.ts                         # server actions (sign-out)
     ├── favicon.ico
     ├── icon.svg
     ├── icon.png
@@ -158,8 +161,10 @@ This uses the Next.js **App Router** (`app/`). Routes map to folders:
 should wrap their content in `LoggedInTemplate` from
 `components/templates/logged-in-template.tsx` to stay visually consistent with
 the rest of the logged-in area — and are protected automatically by `proxy.ts`,
-with no per-page code. Tests live beside the code they cover as `*.test.tsx`
-(and `*.test.ts`).
+with no per-page code. `LoggedInTemplate` is a Server Component that reads the
+session and composes `AppShell`, the client component holding the shared chrome
+(fixed header, navigation drawer, scrollable main). Tests live beside the code
+they cover as `*.test.tsx` (and `*.test.ts`).
 
 ## Backend
 
