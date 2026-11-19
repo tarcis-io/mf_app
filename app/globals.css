@@ -5,6 +5,11 @@
   --foreground: #000000;
   --primary: #f97316;
   --primary-hover: #ea580c;
+  --sidebar: #1e293b;
+  --sidebar-foreground: #e2e8f0;
+  --sidebar-muted: #94a3b8;
+  --sidebar-hover: #334155;
+  --sidebar-border: #334155;
 }
 
 @theme inline {
@@ -12,6 +17,11 @@
   --color-foreground: var(--foreground);
   --color-primary: var(--primary);
   --color-primary-hover: var(--primary-hover);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-muted: var(--sidebar-muted);
+  --color-sidebar-hover: var(--sidebar-hover);
+  --color-sidebar-border: var(--sidebar-border);
   --font-sans: var(--font-inter);
 }
 
