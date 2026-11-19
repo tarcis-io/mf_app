@@ -19,7 +19,7 @@ vi.mock("@/auth", () => ({
   authorized,
 }));
 
-import proxy from "./proxy";
+import proxy, { MATCHER_PATTERN, buildCsp, config, generateNonce } from "./proxy";
 
 // Minimal stand-in for the augmented NextRequest the proxy reads: `auth`,
 // `headers`, `nextUrl`, and a `nextUrl.clone()` that yields a mutable URL.
@@ -139,5 +139,120 @@ describe("proxy", () => {
 
     expect(res.status).toBe(307);
     expect(new URL(res.headers.get("Location")!).pathname).toBe("/login");
+  });
+});
+
+// Direct tests of the CSP builder. The end-to-end tests above assert a few
+// directives via the response; these pin the exact policy so a stray
+// 'unsafe-inline' (or a dropped directive) is caught at the source, not left to
+// surface as a subtle production CSP regression.
+describe("buildCsp", () => {
+  const nonce = "test-nonce-value";
+  const csp = buildCsp(nonce);
+  const directives = csp.split(";").map((d) => d.trim());
+
+  it("carries the given nonce with strict-dynamic and no inline/remote scripts", () => {
+    expect(csp).toContain(
+      `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
+    );
+    // The whole point of the nonce approach: scripts may never be inline- or
+    // host-allowlisted. 'strict-dynamic' ignores host/scheme allowlists, but an
+    // 'unsafe-inline' here would still be a real hole — guard against it.
+    const scriptSrc = directives.find((d) => d.startsWith("script-src"))!;
+    expect(scriptSrc).not.toContain("'unsafe-inline'");
+    expect(scriptSrc).not.toContain("http:");
+    expect(scriptSrc).not.toContain("https:");
+  });
+
+  it("locks down the high-risk sinks", () => {
+    // These three are the directives that most directly prevent injection /
+    // clickjacking; assert them exactly.
+    expect(directives).toContain("default-src 'self'");
+    expect(directives).toContain("object-src 'none'");
+    expect(directives).toContain("base-uri 'self'");
+    expect(directives).toContain("frame-ancestors 'none'");
+    expect(directives).toContain("form-action 'self'");
+  });
+
+  it("keeps style-src 'unsafe-inline' (required by Next/React — do not tighten)", () => {
+    // Next/React inject un-nonce-able inline styles; removing this blanks the
+    // page. Documented in proxy.ts and DEPLOYMENT.md. The test encodes the
+    // intent so a well-meaning "tightening" trips here first.
+    expect(directives).toContain("style-src 'self' 'unsafe-inline'");
+  });
+
+  it("does not allow remote images or connections by default", () => {
+    // The app renders no remote images and talks only to itself today. When
+    // mf_service is wired up, connect-src changes and this test should be
+    // updated deliberately (see the note in proxy.ts).
+    expect(directives).toContain("img-src 'self' data:");
+    expect(directives).toContain("connect-src 'self'");
+  });
+
+  it("interpolates the nonce rather than emitting a literal placeholder", () => {
+    expect(buildCsp("abc123")).toContain("'nonce-abc123'");
+    expect(buildCsp("abc123")).not.toContain("${nonce}");
+  });
+});
+
+describe("generateNonce", () => {
+  it("produces a 22-char base64url token (16 random bytes, no +/= padding)", () => {
+    const nonce = generateNonce();
+    expect(nonce).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    expect(nonce).not.toMatch(/[+/=]/);
+  });
+
+  it("is unique across calls", () => {
+    const seen = new Set(Array.from({ length: 50 }, () => generateNonce()));
+    expect(seen.size).toBe(50);
+  });
+});
+
+// The matcher is a security boundary: it decides which routes get run through
+// auth + CSP. A regression here (e.g. accidentally excluding a page, or newly
+// running the Auth.js endpoints through the proxy) would be invisible in the
+// behavioral tests above, which call the proxy fn directly and never exercise
+// the matcher. So assert the pattern's routing decisions directly.
+describe("config.matcher", () => {
+  // Next.js applies the matcher body to the pathname. The pattern is
+  // `/(<body>)`, so the capturing body is tested against the path with its
+  // leading slash removed; the decisive part is the negative lookahead. Build
+  // an anchored regex from the *exported* pattern (not a hand-copied duplicate)
+  // so this test guards the real string shipped in `config`.
+  const body = MATCHER_PATTERN.replace(/^\/\(/, "").replace(/\)$/, "");
+  const matcherRe = new RegExp(`^${body}$`);
+  const isMatched = (path: string) => matcherRe.test(path.replace(/^\//, ""));
+
+  it("exports exactly the pattern used by the Next.js config", () => {
+    // MATCHER_PATTERN is derived from config.matcher[0] (config holds the bare
+    // literal Next's static analysis requires); assert they stay in lockstep so
+    // the routing cases below are testing the string the framework actually uses.
+    expect(config.matcher).toEqual([MATCHER_PATTERN]);
+  });
+
+  it.each([
+    // Pages / app routes → protected (matched).
+    ["/", true],
+    ["/login", true],
+    ["/dashboard", true],
+    ["/dashboard/reports", true],
+    // A non-auth API route is still protected.
+    ["/api/batches", true],
+    // Auth.js endpoints → excluded (the OAuth flow must not be gated).
+    ["/api/auth/callback/google", false],
+    ["/api/auth/session", false],
+    // Next internals → excluded.
+    ["/_next/static/chunk.js", false],
+    ["/_next/image", false],
+    // Any path ending in a file extension → excluded (assets + file-based
+    // metadata routes), matched by convention, not a filename list.
+    ["/favicon.ico", false],
+    ["/icon.svg", false],
+    ["/apple-icon.png", false],
+    ["/logo.svg", false],
+    ["/robots.txt", false],
+    ["/sitemap.xml", false],
+  ])("routes %s → runs proxy = %s", (path, expected) => {
+    expect(isMatched(path)).toBe(expected);
   });
 });

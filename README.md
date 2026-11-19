@@ -83,10 +83,11 @@ wired up, add its origin to the CSP `connect-src` directive in `proxy.ts`.
 
 ## Pages
 
-| Path     | Description                              | Access        |
-| -------- | ---------------------------------------- | ------------- |
-| `/`      | Home page (logged-in area).              | Authenticated |
-| `/login` | Login page.                              | Public        |
+| Path           | Description                                               | Access        |
+| -------------- | --------------------------------------------------------- | ------------- |
+| `/`            | Home page (logged-in area).                               | Authenticated |
+| `/login`       | Login page.                                               | Public        |
+| `/api/auth/*`  | Auth.js OAuth endpoints (sign in/out, callback, session). | Public        |
 
 All routes except `/login` require an authenticated session; unauthenticated
 requests are redirected to `/login` by the proxy (see

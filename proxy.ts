@@ -21,7 +21,7 @@ import { auth, authorized } from "@/auth";
  *     navigation, not a form POST to Google, so 'self' is sufficient.
  *   - `upgrade-insecure-requests`: defense-in-depth for mixed content.
  */
-function buildCsp(nonce: string): string {
+export function buildCsp(nonce: string): string {
   const directives = [
     `default-src 'self'`,
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
@@ -48,7 +48,7 @@ function buildCsp(nonce: string): string {
  * base64url charset avoids any layer that might mangle `+`, `/`, or `=` in an
  * HTTP header while staying within the CSP `base64-value` grammar.
  */
-function generateNonce(): string {
+export function generateNonce(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
   return btoa(String.fromCharCode(...bytes))
     .replace(/\+/g, "-")
@@ -117,8 +117,20 @@ export const config = {
    * Everything else requires an authenticated session. App Router pages are
    * always extensionless, so protected routes are never matched by the file
    * clause; conversely, don't give an authenticated route a file extension.
+   *
+   * This is a security boundary: it decides which routes get auth + CSP. Keep
+   * the pattern a bare inline string literal — Next extracts `config` by static
+   * AST analysis and silently drops a matcher built from a referenced constant
+   * (it only reads literals), which would run the proxy on *every* route. The
+   * pattern is re-exported below as `MATCHER_PATTERN` (read back from here, so
+   * they can't drift) for direct unit testing in `proxy.test.ts`.
    */
-  matcher: [
-    "/((?!api/auth|_next/static|_next/image|[^?]*\\.[^?/]+$).*)",
-  ],
+  matcher: ["/((?!api/auth|_next/static|_next/image|[^?]*\\.[^?/]+$).*)"],
 };
+
+/**
+ * The matcher pattern (see `config` above), re-exported so the exact string can
+ * be unit-tested directly. Derived from `config` rather than duplicated, so the
+ * test guards the literal the framework actually uses.
+ */
+export const MATCHER_PATTERN = config.matcher[0];
