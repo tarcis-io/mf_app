@@ -98,6 +98,12 @@ requests are redirected to `/login` by the proxy (see
 common shell via the `LoggedInTemplate` component — see [Layout](#layout)
 below.
 
+Two full-page error states are not routes but render for any path: a **404**
+(`app/not-found.tsx`, shown for unmatched routes) and a **generic error**
+(`app/error.tsx`, the client error boundary for a page that throws). Both are
+standalone centered pages with a "Back to home" link and share the
+`ErrorPage` component.
+
 ## Development
 
 ```bash
@@ -136,6 +142,8 @@ mf_app/                                    # repository root
 ├── components/
 │   ├── neural-network-background.tsx      # decorative animated login backdrop
 │   ├── neural-network-background.test.tsx
+│   ├── error-page.tsx                     # shared centered layout for 404 / 500
+│   ├── error-page.test.tsx
 │   ├── user-label.tsx                     # signed-in user's name/email (header)
 │   ├── user-label.test.tsx
 │   └── templates/
@@ -149,6 +157,10 @@ mf_app/                                    # repository root
     ├── globals.css                        # Tailwind entrypoint + theme tokens
     ├── actions.ts                         # server actions (sign-in, sign-out)
     ├── actions.test.ts
+    ├── not-found.tsx                      # 404 page (unmatched routes)
+    ├── not-found.test.tsx
+    ├── error.tsx                          # generic error boundary (client)
+    ├── error.test.tsx
     ├── favicon.ico
     ├── icon.svg
     ├── icon.png
@@ -157,7 +169,7 @@ mf_app/                                    # repository root
     ├── page.test.tsx
     ├── api/
     │   └── auth/[...nextauth]/route.ts    # Auth.js OAuth endpoints
-    │── login/
+    ├── login/
     │   ├── page.tsx                       # "/login" — login page
     │   └── page.test.tsx
     ├── about/
