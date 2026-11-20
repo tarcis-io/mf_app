@@ -60,8 +60,9 @@ function baseUrl(): string {
         "Set it to the service base URL (see .env.example / DEPLOYMENT.md).",
     );
   }
-  // Trim a trailing slash so `${base}/batches` never doubles up.
-  return url.trim().replace(/\/$/, "");
+  // Trim any trailing slash(es) so `${base}/batches` never doubles up, even if
+  // the configured URL ends in more than one.
+  return url.trim().replace(/\/+$/, "");
 }
 
 /**

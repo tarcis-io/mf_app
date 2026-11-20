@@ -45,18 +45,24 @@ describe("listBatches", () => {
     expect(init?.cache).toBe("no-store");
   });
 
-  it("strips a trailing slash on the base URL so the path doesn't double up", async () => {
-    vi.stubEnv("MF_SERVICE_URL", "https://mf-service.massflow.ai/");
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValue(new Response("[]", { status: 200 }));
+  it.each([
+    ["https://mf-service.massflow.ai/", "one trailing slash"],
+    ["https://mf-service.massflow.ai//", "several trailing slashes"],
+  ])(
+    "strips trailing slashes on the base URL so the path doesn't double up (%s)",
+    async (base) => {
+      vi.stubEnv("MF_SERVICE_URL", base);
+      const fetchMock = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(new Response("[]", { status: 200 }));
 
-    await listBatches("user-123");
+      await listBatches("user-123");
 
-    expect(fetchMock.mock.calls[0][0]).toBe(
-      "https://mf-service.massflow.ai/batches",
-    );
-  });
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        "https://mf-service.massflow.ai/batches",
+      );
+    },
+  );
 
   it("returns the parsed batch list on success", async () => {
     const batches = [makeBatch(), makeBatch({ id: "other", status: "error" })];

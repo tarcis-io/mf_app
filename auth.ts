@@ -6,6 +6,11 @@ import { validateEnv } from "@/env";
 // Fail fast at server start if required secrets are missing, rather than
 // surfacing a confusing error at the first sign-in. No-op during `next build`.
 // See `@/env` and DEPLOYMENT.md.
+//
+// This runs as an import side-effect, and this module is the import root for
+// both the app and the proxy (`proxy.ts` imports from here), so this single
+// call is what validates the environment in every server runtime — there is no
+// separate hook in `proxy.ts`.
 validateEnv();
 
 /**

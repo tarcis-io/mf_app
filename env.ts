@@ -117,7 +117,6 @@ function isBuildPhase(): boolean {
  * from `@/auth`.
  */
 export function validateEnv(): void {
-  //return;
   if (isBuildPhase()) return;
 
   const checks = [

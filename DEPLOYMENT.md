@@ -2,7 +2,7 @@
 
 `mf_app` ships as a multi-stage Docker image (Next.js [standalone output](https://nextjs.org/docs/app/api-reference/config/next-config-js/output)) and is designed to run on **Google Cloud Run**. This guide covers building the image, the required environment variables, the Google OAuth setup, and the first deploy.
 
-> **TL;DR of the part people get wrong:** on Cloud Run you **must** set `AUTH_URL` to the service's public origin and `AUTH_TRUST_HOST=true`, and register `https://<origin>/api/auth/callback/google` as an Authorized redirect URI in Google. Miss these and sign-in fails with an `UntrustedHost` or redirect-mismatch error. The app now fails fast at startup if `AUTH_SECRET`/`AUTH_GOOGLE_ID`/`AUTH_GOOGLE_SECRET` (and, in production, `AUTH_URL`) are missing — see [Environment variables](#environment-variables).
+> **TL;DR of the part people get wrong:** on Cloud Run you **must** set `AUTH_URL` to the service's public origin and `AUTH_TRUST_HOST=true`, and register `https://<origin>/api/auth/callback/google` as an Authorized redirect URI in Google. Miss these and sign-in fails with an `UntrustedHost` or redirect-mismatch error. The app now fails fast at startup if `AUTH_SECRET`/`AUTH_GOOGLE_ID`/`AUTH_GOOGLE_SECRET` (and, in production, `AUTH_URL`, `AUTH_TRUST_HOST`, and `MF_SERVICE_URL`) are missing — see [Environment variables](#environment-variables).
 
 ## Prerequisites
 

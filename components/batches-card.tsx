@@ -77,9 +77,12 @@ async function BatchesContent() {
         </dl>
       </>
     );
-  } catch {
+  } catch (error) {
     // listBatches throws on a missing MF_SERVICE_URL or a non-2xx response.
-    // Keep the failure contained to this card.
+    // Keep the failure contained to this card, but log it server-side so a
+    // backend outage is diagnosable (status code / DNS / missing URL) rather
+    // than silently rendering the error state with nothing in the logs.
+    console.error("BatchesCard: failed to load batches", error);
     return <CardError />;
   }
 }
