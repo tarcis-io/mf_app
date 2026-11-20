@@ -14,7 +14,7 @@ vi.mock("next-auth/providers/google", () => ({ default: () => ({}) }));
 // its own dedicated tests (see `env.test.ts`).
 vi.mock("@/env", () => ({ validateEnv: vi.fn() }));
 
-import { authorized } from "./auth";
+import { authorized, session } from "./auth";
 
 /**
  * Build the minimal `{ auth, request }` argument the callback reads: the
@@ -67,5 +67,34 @@ describe("authorized callback", () => {
   it("protects nested routes the same way", () => {
     expect(authorized(makeParams("/hello-world", false))).toBe(false);
     expect(authorized(makeParams("/hello-world", true))).toBe(true);
+  });
+});
+
+/**
+ * Build the `{ session, token }` argument the `session` callback reads. Only
+ * `session.user` and `token.sub` matter here; cast through unknown so we don't
+ * have to fabricate the full Session/JWT shape.
+ */
+function makeSessionParams(sub: string | undefined) {
+  return {
+    session: { user: { name: "Ada Lovelace" } },
+    token: { sub },
+  } as unknown as Parameters<typeof session>[0];
+}
+
+describe("session callback", () => {
+  it("copies the token's sub onto session.user.id (the X-User-Id)", () => {
+    const result = session(makeSessionParams("google-oauth-sub-123"));
+
+    // The callback's return is the Session (the JWT branch of the union).
+    expect((result as { user: { id?: string } }).user.id).toBe(
+      "google-oauth-sub-123",
+    );
+  });
+
+  it("leaves the session unchanged when the token has no sub", () => {
+    const result = session(makeSessionParams(undefined));
+
+    expect((result as { user: { id?: string } }).user.id).toBeUndefined();
   });
 });

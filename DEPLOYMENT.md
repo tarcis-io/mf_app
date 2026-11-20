@@ -15,15 +15,16 @@
 
 `mf_app` validates these at server startup (`env.ts`, called from `auth.ts`). A missing or empty required variable throws immediately with a descriptive error instead of failing later at first sign-in. Validation is skipped during `next build` (secrets are injected at deploy, not build).
 
-| Variable             | Required                   | Description                                                                                                                                                          |
-| -------------------- | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AUTH_SECRET`        | Always                     | Encrypts the session cookie / JWT. Generate with `npx auth secret`. Keep it secret.                                                                                  |
-| `AUTH_GOOGLE_ID`     | Always                     | Google OAuth client ID.                                                                                                                                              |
-| `AUTH_GOOGLE_SECRET` | Always                     | Google OAuth client secret.                                                                                                                                          |
-| `AUTH_URL`           | **Production**             | The deployed public origin, e.g. `https://mf-app-xxxxx.a.run.app`. Used to build OAuth callback URLs behind a proxy. Not needed locally (inferred from `localhost`). |
-| `AUTH_TRUST_HOST`    | **Production (Cloud Run)** | Set to `true`. Tells Auth.js to trust the `Host`/`X-Forwarded-Host` headers set by Cloud Run's proxy. Without it, Auth.js rejects requests with `UntrustedHost`.     |
+| Variable             | Required                   | Description                                                                                                                                                                                                                    |
+| -------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `AUTH_SECRET`        | Always                     | Encrypts the session cookie / JWT. Generate with `npx auth secret`. Keep it secret.                                                                                                                                            |
+| `AUTH_GOOGLE_ID`     | Always                     | Google OAuth client ID.                                                                                                                                                                                                        |
+| `AUTH_GOOGLE_SECRET` | Always                     | Google OAuth client secret.                                                                                                                                                                                                    |
+| `AUTH_URL`           | **Production**             | The deployed public origin, e.g. `https://mf-app-xxxxx.a.run.app`. Used to build OAuth callback URLs behind a proxy. Not needed locally (inferred from `localhost`).                                                           |
+| `AUTH_TRUST_HOST`    | **Production (Cloud Run)** | Set to `true`. Tells Auth.js to trust the `Host`/`X-Forwarded-Host` headers set by Cloud Run's proxy. Without it, Auth.js rejects requests with `UntrustedHost`.                                                               |
+| `MF_SERVICE_URL`     | **Production**             | Base URL of `mf_service`, called server-side for batch data (e.g. the home Batches card), e.g. `https://mf-service-xxxxx.a.run.app`. Optional locally — if unset, the card shows an error state and the rest of the app works. |
 
-Store `AUTH_SECRET`, `AUTH_GOOGLE_ID`, and `AUTH_GOOGLE_SECRET` in **Secret Manager**, not as plaintext env vars (see [Deploy](#deploy-to-cloud-run)). `AUTH_URL` and `AUTH_TRUST_HOST` are not sensitive and can be plain env vars.
+Store `AUTH_SECRET`, `AUTH_GOOGLE_ID`, and `AUTH_GOOGLE_SECRET` in **Secret Manager**, not as plaintext env vars (see [Deploy](#deploy-to-cloud-run)). `AUTH_URL`, `AUTH_TRUST_HOST`, and `MF_SERVICE_URL` are not sensitive and can be plain env vars.
 
 ### Why `AUTH_URL` + `AUTH_TRUST_HOST` are mandatory on Cloud Run
 
@@ -60,7 +61,7 @@ docker run --rm -p 8080:8080 --env-file .env.local mf-app:local
 # open http://localhost:8080
 ```
 
-(When running the container locally, set `AUTH_URL=http://localhost:8080` and `AUTH_TRUST_HOST=true` in the env file, and add `http://localhost:8080/api/auth/callback/google` to Google.)
+(When running the container locally, set `AUTH_URL=http://localhost:8080`, `AUTH_TRUST_HOST=true`, and `MF_SERVICE_URL` in the env file, and add `http://localhost:8080/api/auth/callback/google` to Google. The image sets `NODE_ENV=production`, so the production-required vars — including `MF_SERVICE_URL` — are validated at startup; point it at a reachable `mf_service` or the container won't start.)
 
 ## Deploy to Cloud Run
 
@@ -94,10 +95,12 @@ gcloud run deploy mf-app \
   --allow-unauthenticated \
   --port 8080 \
   --set-secrets "AUTH_SECRET=AUTH_SECRET:latest,AUTH_GOOGLE_ID=AUTH_GOOGLE_ID:latest,AUTH_GOOGLE_SECRET=AUTH_GOOGLE_SECRET:latest" \
-  --set-env-vars "AUTH_TRUST_HOST=true"
+  --set-env-vars "AUTH_TRUST_HOST=true,MF_SERVICE_URL=https://mf-service-xxxxx.a.run.app"
 ```
 
 `--allow-unauthenticated` lets the public reach the app; MassFlow's own Google sign-in (not Cloud Run IAM) is what gates access.
+
+`MF_SERVICE_URL` must be set on this **first** deploy — the app validates it at startup (see [Environment variables](#environment-variables)), so the container won't become healthy without it. Point it at your already-deployed `mf_service` origin (it's independent of mf-app's own URL). `AUTH_URL` is the one value that can't be known yet (it's mf-app's own assigned origin); it's set next.
 
 ### 3. Set `AUTH_URL` to the assigned origin
 
@@ -105,8 +108,11 @@ After the first deploy, read the service URL and set `AUTH_URL`:
 
 ```bash
 URL=$(gcloud run services describe mf-app --region "$REGION" --format='value(status.url)')
-gcloud run services update mf-app --region "$REGION" --set-env-vars "AUTH_URL=$URL,AUTH_TRUST_HOST=true"
+gcloud run services update mf-app --region "$REGION" \
+  --set-env-vars "AUTH_URL=$URL,AUTH_TRUST_HOST=true,MF_SERVICE_URL=https://mf-service-xxxxx.a.run.app"
 ```
+
+(`--set-env-vars` replaces the whole set, so repeat `MF_SERVICE_URL` here to keep it. Alternatively use `--update-env-vars "AUTH_URL=$URL"` to set just that one without touching the others.)
 
 Then add `$URL/api/auth/callback/google` to the OAuth client's Authorized redirect URIs (step 2 of [Google OAuth setup](#google-oauth-setup)).
 

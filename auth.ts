@@ -25,6 +25,11 @@ type AuthorizedCallback = NonNullable<
   NonNullable<NextAuthConfig["callbacks"]>["authorized"]
 >;
 
+/** The `session` callback's exact signature, derived from Auth.js config. */
+type SessionCallback = NonNullable<
+  NonNullable<NextAuthConfig["callbacks"]>["session"]
+>;
+
 /**
  * Gatekeeper used by `proxy.ts` (see Next.js 16 proxy / middleware), run on
  * every matched request:
@@ -50,6 +55,27 @@ export const authorized: AuthorizedCallback = ({ auth, request }) => {
   return isLoggedIn;
 };
 
+/**
+ * Expose the Google account id (the OAuth `sub`) to the app as
+ * `session.user.id`. With the JWT strategy Auth.js already stores the provider's
+ * `sub` on `token.sub`, so this only copies it onto the session that Server
+ * Components read via `auth()`.
+ *
+ * This id is what identifies the user to `mf_service`: it is sent as the
+ * `X-User-Id` header (see `lib/mf-service.ts`), which scopes every batch to its
+ * owner. Exported so it can be unit-tested directly (see `auth.test.ts`).
+ *
+ * `token.sub` is typed optional, so it's guarded; in practice Auth.js always
+ * sets it for an authenticated JWT. `session.user.id` is typed via the module
+ * augmentation in `types/next-auth.d.ts`.
+ */
+export const session: SessionCallback = ({ session, token }) => {
+  if (token.sub) {
+    session.user.id = token.sub;
+  }
+  return session;
+};
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [Google],
   // No database adapter is configured, so use stateless JWT sessions.
@@ -61,5 +87,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   },
   callbacks: {
     authorized,
+    session,
   },
 });

@@ -26,6 +26,13 @@ vi.mock("@/components/templates/logged-in-template", () => ({
   },
 }));
 
+// BatchesCard is an async Server Component that reads the session and calls
+// mf_service; importing it would pull in the full Auth.js runtime. Stub it so
+// this test stays focused on Home's own wiring. BatchesCard has its own tests.
+vi.mock("@/components/batches-card", () => ({
+  default: () => <div data-testid="batches-card" />,
+}));
+
 import Home from "./page";
 
 describe("Home page", () => {
@@ -54,5 +61,11 @@ describe("Home page", () => {
     render(<Home />);
 
     expect(screen.getByText("Welcome to MassFlow AI.")).toBeInTheDocument();
+  });
+
+  it("renders the Batches summary card", () => {
+    render(<Home />);
+
+    expect(screen.getByTestId("batches-card")).toBeInTheDocument();
   });
 });

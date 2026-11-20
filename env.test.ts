@@ -17,6 +17,7 @@ function clearAll() {
     "AUTH_GOOGLE_SECRET",
     "AUTH_URL",
     "AUTH_TRUST_HOST",
+    "MF_SERVICE_URL",
     "NEXT_PHASE",
   ]) {
     vi.stubEnv(key, undefined as unknown as string);
@@ -27,6 +28,7 @@ function clearAll() {
 function setProductionExtras() {
   vi.stubEnv("AUTH_URL", "https://app.massflow.ai");
   vi.stubEnv("AUTH_TRUST_HOST", "true");
+  vi.stubEnv("MF_SERVICE_URL", "https://mf-service.massflow.ai");
 }
 
 function setSecrets() {
@@ -74,7 +76,7 @@ describe("validateEnv", () => {
     expect(() => validateEnv()).toThrow(/AUTH_URL/);
   });
 
-  it("passes in production when AUTH_URL and AUTH_TRUST_HOST are also set", () => {
+  it("passes in production when all production vars are also set", () => {
     clearAll();
     vi.stubEnv("NODE_ENV", "production");
     setSecrets();
@@ -87,6 +89,26 @@ describe("validateEnv", () => {
     clearAll();
     vi.stubEnv("NODE_ENV", "development");
     setSecrets();
+
+    expect(() => validateEnv()).not.toThrow();
+  });
+
+  it("requires MF_SERVICE_URL in production", () => {
+    clearAll();
+    vi.stubEnv("NODE_ENV", "production");
+    setSecrets();
+    vi.stubEnv("AUTH_URL", "https://app.massflow.ai");
+    vi.stubEnv("AUTH_TRUST_HOST", "true");
+    // MF_SERVICE_URL intentionally absent.
+
+    expect(() => validateEnv()).toThrow(/MF_SERVICE_URL/);
+  });
+
+  it("does not require MF_SERVICE_URL outside production", () => {
+    clearAll();
+    vi.stubEnv("NODE_ENV", "development");
+    setSecrets();
+    // MF_SERVICE_URL intentionally absent — the batches card degrades locally.
 
     expect(() => validateEnv()).not.toThrow();
   });
@@ -118,6 +140,7 @@ describe("validateEnv", () => {
       vi.stubEnv("NODE_ENV", "production");
       setSecrets();
       vi.stubEnv("AUTH_URL", "https://app.massflow.ai");
+      vi.stubEnv("MF_SERVICE_URL", "https://mf-service.massflow.ai");
       vi.stubEnv("AUTH_TRUST_HOST", value);
 
       expect(() => validateEnv(), `value: ${JSON.stringify(value)}`).not.toThrow();
@@ -175,9 +198,10 @@ describe("validateEnv", () => {
     it("reports secret and production problems together in a single throw", () => {
       clearAll();
       vi.stubEnv("NODE_ENV", "production");
-      // Nothing set: all three secrets missing, AUTH_URL missing, and
-      // AUTH_TRUST_HOST missing. A single validateEnv() call must surface every
-      // problem at once — not just the always-required set, and not one per run.
+      // Nothing set: all three secrets missing, plus AUTH_URL, AUTH_TRUST_HOST,
+      // and MF_SERVICE_URL missing. A single validateEnv() call must surface
+      // every problem at once — not just the always-required set, not one per
+      // run.
       const message = messageFrom();
 
       expect(message).toContain("AUTH_SECRET");
@@ -185,6 +209,7 @@ describe("validateEnv", () => {
       expect(message).toContain("AUTH_GOOGLE_SECRET");
       expect(message).toContain("AUTH_URL");
       expect(message).toContain("AUTH_TRUST_HOST");
+      expect(message).toContain("MF_SERVICE_URL");
     });
 
     it("aggregates a missing secret with a present-but-invalid AUTH_TRUST_HOST", () => {
@@ -213,6 +238,7 @@ describe("validateEnv", () => {
       // failing variable should appear as a problem line.
       setSecrets();
       vi.stubEnv("AUTH_URL", "https://app.massflow.ai");
+      vi.stubEnv("MF_SERVICE_URL", "https://mf-service.massflow.ai");
       // AUTH_TRUST_HOST intentionally absent.
       const message = messageFrom();
 
@@ -229,6 +255,7 @@ describe("validateEnv", () => {
       // The satisfied variables are not reported as problems.
       expect(problemLines[0]).not.toContain("AUTH_SECRET");
       expect(problemLines[0]).not.toContain("AUTH_URL");
+      expect(problemLines[0]).not.toContain("MF_SERVICE_URL");
     });
 
     it("still includes the remediation hint", () => {

@@ -70,6 +70,11 @@ const ALWAYS_REQUIRED: EnvCheck[] = [
  *     TLS-terminating proxy like Cloud Run, Auth.js rejects every request with
  *     `UntrustedHost` unless this is enabled — the single most common "works
  *     locally, breaks in prod" failure.
+ *   - `MF_SERVICE_URL` is the base URL of `mf_service`, the API this app calls
+ *     server-side for batch data (see `lib/mf-service.ts`). Presence +
+ *     non-empty. Not required locally — without it the batches card simply
+ *     shows its error state and the rest of the app works — but a production
+ *     deploy without it is a misconfiguration worth catching at startup.
  */
 const PRODUCTION_REQUIRED: EnvCheck[] = [
   {
@@ -90,6 +95,14 @@ const PRODUCTION_REQUIRED: EnvCheck[] = [
       `Behind a reverse proxy (e.g. Cloud Run), Auth.js otherwise rejects ` +
       `requests with "UntrustedHost" at sign-in.`,
   },
+  {
+    name: "MF_SERVICE_URL",
+    validate: isNonEmpty,
+    describe: () =>
+      `MF_SERVICE_URL is required in production but missing or empty. Set it to ` +
+      `the base URL of mf_service (e.g. https://mf-service-xxxxx.a.run.app); ` +
+      `the app calls it server-side for batch data.`,
+  },
 ];
 
 /** True during `next build` (static analysis / prerender), where secrets are absent. */
@@ -104,6 +117,7 @@ function isBuildPhase(): boolean {
  * from `@/auth`.
  */
 export function validateEnv(): void {
+  //return;
   if (isBuildPhase()) return;
 
   const checks = [

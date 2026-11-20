@@ -50,7 +50,8 @@ committed.
 
 These three are required in every environment and the app **fails fast at
 startup** if any is missing (see `env.ts`). In production (e.g. Cloud Run) you
-must also set `AUTH_URL` and `AUTH_TRUST_HOST=true` — see
+must also set `AUTH_URL`, `AUTH_TRUST_HOST=true`, and `MF_SERVICE_URL` (the
+`mf_service` base URL — see [Backend](#backend)) — see
 [Deployment](#deployment) and [`DEPLOYMENT.md`](./DEPLOYMENT.md).
 
 ## Run
@@ -128,8 +129,8 @@ mf_app/                                    # repository root
 ├── eslint.config.mjs
 ├── vitest.config.ts                       # test runner config (jsdom + "@/*" alias)
 ├── vitest.setup.ts                        # global test setup (jest-dom matchers)
-├── auth.ts                                # Auth.js (NextAuth) config + authorized callback
-├── auth.test.ts                           # tests for the authorized (route-protection) callback
+├── auth.ts                                # Auth.js (NextAuth) config + authorized/session callbacks
+├── auth.test.ts                           # tests for the authorized + session callbacks
 ├── env.ts                                 # fail-fast validation of required env vars
 ├── env.test.ts
 ├── proxy.ts                               # route protection + per-request CSP (Next 16 proxy)
@@ -137,6 +138,11 @@ mf_app/                                    # repository root
 ├── .env.example                           # template for required env vars
 ├── DEPLOYMENT.md                          # Cloud Run deployment guide (env contract, OAuth)
 ├── README.md
+├── types/
+│   └── next-auth.d.ts                     # Auth.js type augmentation (session.user.id)
+├── lib/
+│   ├── mf-service.ts                      # server-side mf_service client (batches) + summary helper
+│   └── mf-service.test.ts
 ├── public/
 │   └── logo.svg                           # wordmark logo (login page + drawer)
 ├── components/
@@ -144,6 +150,8 @@ mf_app/                                    # repository root
 │   ├── neural-network-background.test.tsx
 │   ├── error-page.tsx                     # shared centered layout for 404 / 500
 │   ├── error-page.test.tsx
+│   ├── batches-card.tsx                   # home-page card: batch total + per-status counts
+│   ├── batches-card.test.tsx
 │   ├── user-label.tsx                     # signed-in user's name/email (header)
 │   ├── user-label.test.tsx
 │   └── templates/
@@ -201,6 +209,18 @@ they cover as `*.test.tsx` (and `*.test.ts`).
 | [mf_engine](https://github.com/tarcis-io/mf_engine)   | Core processing engine, used internally by `mf_service`. |
 
 User authentication is handled in `mf_app` itself (see
-[Authentication](#authentication)). `mf_app` does not yet point at a live
-`mf_service` instance — wiring up the API base URL, and passing the session
-through to `mf_service`, is expected as this project grows.
+[Authentication](#authentication)). `mf_app` reaches `mf_service` server-side
+through a small client in `lib/mf-service.ts`, pointed at the base URL in the
+`MF_SERVICE_URL` environment variable. Each call identifies the end user with an
+`X-User-Id` request header carrying the Google account id (the OAuth `sub`,
+surfaced as `session.user.id`; see `auth.ts`), which `mf_service` uses to scope
+every batch to its owner. The home page's **Batches** card is the first
+consumer: it lists the signed-in user's batches (`GET /batches`) and shows the
+total plus a per-status breakdown. `mf_service` has no counts endpoint, so the
+totals are derived from the list client-side.
+
+`MF_SERVICE_URL` is required in production (the app fails fast without it) and
+optional locally — if it's unset, the Batches card shows an error state and the
+rest of the app works. More of the `mf_service` surface (creating batches,
+uploading files, per-batch views) is expected to be wired up as the project
+grows.
