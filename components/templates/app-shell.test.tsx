@@ -186,14 +186,14 @@ describe("AppShell", () => {
     }
   });
 
-  it("separates the nav into groups with dividers (after the title, before the secondary group)", () => {
+  it("separates the nav into groups with a divider before the secondary group", () => {
     renderShell();
 
     const nav = screen.getByRole("navigation", { name: "Primary" });
-    // Two <hr> dividers inside the drawer: one under the brand, one before the
-    // secondary (Settings/About) group. The sign-out block uses a bordered div
-    // (not an <hr>), so it isn't counted here.
-    expect(within(nav).getAllByRole("separator")).toHaveLength(2);
+    // One <hr> divider inside the drawer: before the secondary (Settings/About)
+    // group. The brand/header seam and the sign-out block use a `border-b` /
+    // bordered div (not an <hr>), so they aren't counted here.
+    expect(within(nav).getAllByRole("separator")).toHaveLength(1);
   });
 
   it("orders the drawer: brand, primary links, secondary links, then sign out", () => {

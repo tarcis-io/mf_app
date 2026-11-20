@@ -1,6 +1,8 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { auth } from "@/auth";
+import BatchesIcon from "@/components/batches-icon";
 import {
   BATCH_STATUSES,
   listBatches,
@@ -22,8 +24,25 @@ const STATUS_LABELS: Record<BatchStatus, string> = {
 };
 
 /**
+ * Dot color for each status, following the lifecycle with conventional
+ * traffic-light semantics: the pre-processing phase is neutral/cool (slate →
+ * blue), active work is amber, success is green, and failure is red. Keyed by
+ * every `BatchStatus` so a new status won't compile until it's given a color.
+ * Hex values (not Tailwind classes) are applied inline on the dot — these are
+ * one-off indicator colors, not part of the app's theme tokens in globals.css.
+ */
+const STATUS_DOT_COLORS: Record<BatchStatus, string> = {
+  creating: "#94a3b8", // slate
+  created: "#3b82f6", // blue
+  processing: "#f59e0b", // amber
+  processed: "#22c55e", // green
+  error: "#ef4444", // red
+};
+
+/**
  * Home-page card summarising the signed-in user's batches: the total, then a
- * per-status breakdown (all five states, including zeros).
+ * per-status breakdown (all five states, including zeros), and a link to the
+ * full Batches page.
  *
  * A Server Component. It reads the session to get the user id (the Google
  * `sub`, sent to `mf_service` as `X-User-Id`) and fetches server-side via
@@ -68,7 +87,16 @@ async function BatchesContent() {
               key={status}
               className="flex items-center justify-between text-sm"
             >
-              <dt className="text-foreground/60">{STATUS_LABELS[status]}</dt>
+              <dt className="flex items-center gap-2 text-foreground/60">
+                {/* Colored indicator for the status. Decorative — the label text
+                    beside it carries the meaning — so hidden from assistive tech. */}
+                <span
+                  className="h-2 w-2 shrink-0 rounded-full"
+                  style={{ backgroundColor: STATUS_DOT_COLORS[status] }}
+                  aria-hidden="true"
+                />
+                {STATUS_LABELS[status]}
+              </dt>
               <dd className="font-medium tabular-nums text-foreground/80">
                 {summary.counts[status]}
               </dd>
@@ -87,7 +115,11 @@ async function BatchesContent() {
   }
 }
 
-/** The card shell: title + framed body. Shared by the data and error states. */
+/**
+ * The card shell: title (with the shared batches icon) + framed body + a link
+ * to the full Batches page. Shared by the data and error states, so the link
+ * out is always available even when the summary can't load.
+ */
 function Card({ children }: { children: ReactNode }) {
   return (
     <section
@@ -96,11 +128,19 @@ function Card({ children }: { children: ReactNode }) {
     >
       <h2
         id="batches-card-title"
-        className="text-sm font-semibold tracking-tight text-foreground"
+        className="flex items-center gap-2 text-sm font-semibold tracking-tight text-foreground"
       >
+        <BatchesIcon className="h-4 w-4 shrink-0 text-primary" />
         Batches
       </h2>
       <div className="mt-4">{children}</div>
+      <Link
+        href="/batches"
+        className="mt-6 flex h-10 items-center justify-center gap-1.5 rounded-lg border border-foreground/15 px-4 text-sm font-medium text-foreground/80 outline-none transition-colors hover:border-foreground/25 hover:bg-foreground/[.04] hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary motion-reduce:transition-none"
+      >
+        View all batches
+        <span aria-hidden="true">&rarr;</span>
+      </Link>
     </section>
   );
 }

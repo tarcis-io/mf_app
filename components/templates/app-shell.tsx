@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useCallback, useRef, useState, type ReactNode } from "react";
 
 import { signOutAction } from "@/app/actions";
+import BatchesIconSvg from "@/components/batches-icon";
 import {
   useDrawerDismissAndLock,
   useDrawerDragToClose,
@@ -70,22 +71,9 @@ const MenuIcon = (
   </svg>
 );
 
-const BatchesIcon = (
-  <svg
-    aria-hidden="true"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className="h-5 w-5 shrink-0"
-  >
-    <path d="M12 3 3 7.5l9 4.5 9-4.5L12 3Z" />
-    <path d="m3 12 9 4.5L21 12" />
-    <path d="m3 16.5 9 4.5 9-4.5" />
-  </svg>
-);
+// Shared with the home Batches card (see `@/components/batches-icon`); the
+// drawer uses the default `h-5 w-5` size.
+const BatchesIcon = <BatchesIconSvg />;
 
 const SettingsIcon = (
   <svg
@@ -264,10 +252,7 @@ export default function AppShell({ title, userLabel, children }: AppShellProps) 
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        {/* Fixed height matches the header (`h-16`) so this block's bottom edge
-            — and the divider directly below it — line up exactly with the top
-            bar's bottom border across the drawer/content seam. */}
-        <div className="flex h-16 items-center gap-2.5 px-5">
+        <div className="flex h-16 items-center gap-2.5 border-b border-sidebar-border px-5">
           <Link
             href="/"
             onClick={closeDrawer}
@@ -285,9 +270,6 @@ export default function AppShell({ title, userLabel, children }: AppShellProps) 
             </span>
           </Link>
         </div>
-
-        {/* Divider under the brand, separating it from the nav links. */}
-        <hr className="border-t border-sidebar-border" />
 
         {/* Primary destinations. `flex-1` lets this list take the free space so
             the secondary group below it is pushed toward the bottom (but stays
@@ -312,7 +294,7 @@ export default function AppShell({ title, userLabel, children }: AppShellProps) 
           <form action={signOutAction}>
             <button
               type="submit"
-              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground/80 outline-none transition-colors hover:bg-sidebar-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-primary motion-reduce:transition-none"
+              className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground/80 outline-none transition-colors hover:bg-sidebar-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-primary motion-reduce:transition-none"
             >
               {SignOutIcon}
               Sign out

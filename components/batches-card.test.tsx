@@ -21,6 +21,25 @@ vi.mock("@/lib/mf-service", async (importOriginal) => {
   return { ...actual, listBatches };
 });
 
+// next/link's real click handler hands off to the App Router, which isn't wired
+// up in jsdom. The card only needs Link to render an anchor with its href (the
+// "View all batches" action), so stub it with a plain anchor (same approach as
+// the other component tests).
+vi.mock("next/link", () => ({
+  default: ({
+    children,
+    href,
+    ...rest
+  }: {
+    children: React.ReactNode;
+    href: string;
+  } & React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
+    <a href={href} {...rest}>
+      {children}
+    </a>
+  ),
+}));
+
 import BatchesCard from "./batches-card";
 
 function makeBatch(status: Batch["status"]): Batch {
@@ -122,5 +141,64 @@ describe("BatchesCard", () => {
     expect(screen.getByText(/couldn't load batches/i)).toBeInTheDocument();
     // We don't even attempt the fetch without an id.
     expect(listBatches).not.toHaveBeenCalled();
+  });
+
+  it("renders the batches icon in the card title", async () => {
+    listBatches.mockResolvedValue([]);
+
+    await renderCard();
+
+    // The shared batches glyph sits beside the heading text. It's decorative
+    // (aria-hidden), so the heading's accessible name stays "Batches"; reach the
+    // svg through the heading element rather than by role.
+    const heading = screen.getByRole("heading", { name: "Batches" });
+    const icon = heading.querySelector("svg");
+    expect(icon).not.toBeNull();
+    expect(icon).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("renders a colored indicator dot for every status", async () => {
+    listBatches.mockResolvedValue([makeBatch("created")]);
+
+    await renderCard();
+
+    const card = screen.getByRole("region", { name: "Batches" });
+    // One dot per status row, each carrying its semantic color inline.
+    const expected: Record<string, string> = {
+      Creating: "rgb(148, 163, 184)", // slate #94a3b8
+      Created: "rgb(59, 130, 246)", // blue #3b82f6
+      Processing: "rgb(245, 158, 11)", // amber #f59e0b
+      Processed: "rgb(34, 197, 94)", // green #22c55e
+      Error: "rgb(239, 68, 68)", // red #ef4444
+    };
+    for (const [label, color] of Object.entries(expected)) {
+      const row = within(card).getByText(label).closest("div")!;
+      // The dot is the decorative span inside the row's <dt>.
+      const dot = row.querySelector('span[aria-hidden="true"]');
+      expect(dot).not.toBeNull();
+      expect(dot).toHaveStyle({ backgroundColor: color });
+    }
+  });
+
+  it("links to the full batches page from the card", async () => {
+    listBatches.mockResolvedValue([]);
+
+    await renderCard();
+
+    const link = screen.getByRole("link", { name: /view all batches/i });
+    expect(link).toHaveAttribute("href", "/batches");
+  });
+
+  it("keeps the batches link available even in the error state", async () => {
+    // The link lives in the card shell (shared by both states), so a failed
+    // load still offers a way through to the full page.
+    listBatches.mockRejectedValue(new Error("boom"));
+
+    await renderCard();
+
+    expect(screen.getByText(/couldn't load batches/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /view all batches/i }),
+    ).toHaveAttribute("href", "/batches");
   });
 });
