@@ -87,6 +87,43 @@ describe("listBatches", () => {
     await expect(listBatches("user-123")).rejects.toThrow(/500/);
   });
 
+  it("caps the request with an abort signal (so a hung backend doesn't stall)", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("[]", { status: 200 }));
+
+    await listBatches("user-123");
+
+    // The fetch carries an AbortSignal (from AbortSignal.timeout) so the render
+    // can't hang indefinitely on mf_service.
+    const init = fetchMock.mock.calls[0][1];
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("throws when the body is valid JSON but not an array", async () => {
+    // A 2xx with an object body (e.g. an error envelope) must not flow through
+    // to summarizeBatches as if it were a batch list.
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ detail: "nope" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await expect(listBatches("user-123")).rejects.toThrow(/non-array/);
+  });
+
+  it("throws when the body isn't valid JSON (e.g. an HTML error page)", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("<!doctype html><title>502</title>", {
+        status: 200,
+        headers: { "Content-Type": "text/html" },
+      }),
+    );
+
+    await expect(listBatches("user-123")).rejects.toThrow();
+  });
+
   it("throws when MF_SERVICE_URL is unset", async () => {
     vi.stubEnv("MF_SERVICE_URL", undefined as unknown as string);
     const fetchMock = vi.spyOn(globalThis, "fetch");
@@ -137,5 +174,33 @@ describe("summarizeBatches", () => {
     expect(bucketed).toBe(1);
     // ...but the total still reflects the full list length.
     expect(summary.total).toBe(2);
+  });
+
+  it("ignores a status that collides with an Object.prototype key", () => {
+    // Regression guard: a membership test using `in` would walk the prototype
+    // chain, so these inherited keys would slip past the guard and corrupt
+    // `counts` (e.g. counts.toString becoming a mangled string). The own-
+    // property check must treat them exactly like any other unknown status.
+    const summary = summarizeBatches([
+      makeBatch({ status: "toString" as Batch["status"] }),
+      makeBatch({ status: "constructor" as Batch["status"] }),
+      makeBatch({ status: "hasOwnProperty" as Batch["status"] }),
+      makeBatch({ status: "created" }),
+    ]);
+
+    // Only the real status is bucketed; no prototype key leaked in.
+    expect(summary.counts).toEqual({
+      creating: 0,
+      created: 1,
+      processing: 0,
+      processed: 0,
+      error: 0,
+    });
+    // Every known bucket is still a number (not a mangled function string).
+    for (const status of BATCH_STATUSES) {
+      expect(typeof summary.counts[status]).toBe("number");
+    }
+    // The total reflects the full list, collisions included.
+    expect(summary.total).toBe(4);
   });
 });

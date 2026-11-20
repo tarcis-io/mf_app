@@ -51,6 +51,15 @@ export interface BatchSummary {
   counts: Record<BatchStatus, number>;
 }
 
+/**
+ * How long (ms) to wait for `mf_service` before aborting the request. Without a
+ * cap, a hung backend would stall the Server Component render (and the home
+ * page's Suspense boundary) until the platform's own timeout fires. On abort the
+ * fetch rejects with a `TimeoutError`, which the caller (`BatchesCard`) treats
+ * like any other failure and renders its error state.
+ */
+const REQUEST_TIMEOUT_MS = 5000;
+
 /** Resolve the configured `mf_service` base URL, or throw if it's unset. */
 function baseUrl(): string {
   const url = process.env.MF_SERVICE_URL;
@@ -75,9 +84,11 @@ function baseUrl(): string {
  * caller must pass a real id.
  *
  * Always fetched fresh (`cache: "no-store"`): the count is a live figure, and
- * the response is per-user, so it must never be cached across requests. Throws
- * on a missing base URL or any non-2xx response; the caller (`BatchesCard`)
- * catches that and renders an error state rather than failing the page.
+ * the response is per-user, so it must never be cached across requests. The
+ * request is capped at `REQUEST_TIMEOUT_MS`. Throws on a missing base URL, a
+ * timeout, any non-2xx response, or a body that isn't a JSON array; the caller
+ * (`BatchesCard`) catches that and renders an error state rather than failing
+ * the page.
  *
  * Note: this is a server-to-server call (Next server → mf_service), so it is
  * not governed by the browser CSP `connect-src` in `proxy.ts` — that directive
@@ -90,6 +101,7 @@ export async function listBatches(userId: string): Promise<Batch[]> {
       Accept: "application/json",
     },
     cache: "no-store",
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -98,7 +110,18 @@ export async function listBatches(userId: string): Promise<Batch[]> {
     );
   }
 
-  return (await response.json()) as Batch[];
+  // A 2xx with a non-JSON or non-array body (e.g. a misconfigured proxy
+  // returning HTML) would otherwise surface as a confusing parse error, or let
+  // a non-array through to `summarizeBatches`. Fail with a clear message so the
+  // caller's error state is diagnosable.
+  const body: unknown = await response.json();
+  if (!Array.isArray(body)) {
+    throw new Error(
+      `mf_service GET /batches returned a non-array body (got ${typeof body})`,
+    );
+  }
+
+  return body as Batch[];
 }
 
 /**
@@ -113,7 +136,11 @@ export function summarizeBatches(batches: Batch[]): BatchSummary {
   ) as Record<BatchStatus, number>;
 
   for (const batch of batches) {
-    if (batch.status in counts) {
+    // `Object.hasOwn`, not `in`: `in` walks the prototype chain, so a status of
+    // "toString"/"constructor"/etc. would pass the guard and corrupt `counts`
+    // with an inherited key. Own-property check keeps unexpected values truly
+    // ignored (still counted in the total below).
+    if (Object.hasOwn(counts, batch.status)) {
       counts[batch.status] += 1;
     }
   }
