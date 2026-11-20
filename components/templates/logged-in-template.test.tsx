@@ -74,7 +74,7 @@ describe("LoggedInTemplate", () => {
     expect(screen.getByText("hello world")).toBeInTheDocument();
   });
 
-  it("provides a user-label slot to AppShell", () => {
+  it("provides a user-label slot to AppShell by default", () => {
     render(
       <LoggedInTemplate title="Home">
         <p>content</p>
@@ -85,6 +85,18 @@ describe("LoggedInTemplate", () => {
     // into the shell.
     expect(appShellSpy.mock.calls[0][0].userLabel).toBeDefined();
     expect(screen.getByTestId("user-label-slot")).toBeInTheDocument();
+  });
+
+  it("omits the user label when showUserLabel is false", () => {
+    render(
+      <LoggedInTemplate title="Home" showUserLabel={false}>
+        <p>content</p>
+      </LoggedInTemplate>,
+    );
+
+    // The home page opts out so its "Hello, {name}" title isn't duplicated by
+    // the right-side label; the shell then receives no `userLabel`.
+    expect(appShellSpy.mock.calls[0][0].userLabel).toBeUndefined();
   });
 
   // Note: the user label resolves from an async Server Component (`await

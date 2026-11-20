@@ -5,12 +5,21 @@ import AppShell from "@/components/templates/app-shell";
 import UserLabel from "@/components/user-label";
 
 interface LoggedInTemplateProps {
-  title: string;
+  /** The page title shown in the header. A string for most pages; any node for
+   * a page that streams a session-dependent title (see `AppShell`). */
+  title: ReactNode;
+  /**
+   * Whether to show the signed-in user's name on the right of the header.
+   * Defaults to `true`. The home page sets this `false` because its title is
+   * already a personalized "Hello, {name}" greeting, so repeating the name on
+   * the right would be redundant.
+   */
+  showUserLabel?: boolean;
   children: ReactNode;
 }
 
 /**
- * Shared shell for logged-in pages (the home page today, more to come). Renders
+ * Shared shell for logged-in pages (Home, Batches, Settings, About). Renders
  * the app chrome — a fixed header carrying the page title, a responsive
  * navigation drawer, and a scrollable main region — around the page's own
  * content. The interactive parts live in `AppShell` (a Client Component); this
@@ -32,15 +41,18 @@ interface LoggedInTemplateProps {
  */
 export default function LoggedInTemplate({
   title,
+  showUserLabel = true,
   children,
 }: LoggedInTemplateProps) {
   return (
     <AppShell
       title={title}
       userLabel={
-        <Suspense fallback={<UserLabelFallback />}>
-          <UserLabelSlot />
-        </Suspense>
+        showUserLabel ? (
+          <Suspense fallback={<UserLabelFallback />}>
+            <UserLabelSlot />
+          </Suspense>
+        ) : undefined
       }
     >
       {children}

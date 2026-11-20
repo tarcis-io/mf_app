@@ -141,8 +141,12 @@ const SECONDARY_NAV_ITEMS: NavItem[] = [
 ];
 
 interface AppShellProps {
-  /** The current page title, shown in the header. */
-  title: string;
+  /**
+   * The current page title, shown in the header `<h1>`. Usually a string, but
+   * accepts any node so a page can stream a session-dependent title in behind
+   * its own Suspense boundary (e.g. the home page's "Hello, {name}" greeting).
+   */
+  title: ReactNode;
   /**
    * Session-dependent header content (the signed-in user's label), rendered on
    * the server and passed in so this Client Component never reads the session
@@ -260,7 +264,10 @@ export default function AppShell({ title, userLabel, children }: AppShellProps) 
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="flex items-center gap-2.5 px-5 py-5">
+        {/* Fixed height matches the header (`h-16`) so this block's bottom edge
+            — and the divider directly below it — line up exactly with the top
+            bar's bottom border across the drawer/content seam. */}
+        <div className="flex h-16 items-center gap-2.5 px-5">
           <Link
             href="/"
             onClick={closeDrawer}
@@ -317,7 +324,7 @@ export default function AppShell({ title, userLabel, children }: AppShellProps) 
       {/* Right column: fixed header + scrollable main. */}
       <div className="flex min-w-0 flex-1 flex-col">
         <header
-          className={`flex shrink-0 items-center gap-3 border-b border-foreground/[.08] bg-background px-4 py-4 transition-shadow sm:px-6 motion-reduce:transition-none ${
+          className={`flex h-16 shrink-0 items-center gap-3 border-b border-foreground/[.08] bg-background px-4 transition-shadow sm:px-6 motion-reduce:transition-none ${
             scrolled ? "shadow-sm" : ""
           }`}
         >
@@ -326,7 +333,7 @@ export default function AppShell({ title, userLabel, children }: AppShellProps) 
             onClick={() => setMobileOpen(true)}
             aria-label="Open menu"
             aria-expanded={mobileOpen}
-            className="-ml-1 rounded-md p-1 text-foreground outline-none hover:bg-foreground/[.04] focus-visible:ring-2 focus-visible:ring-primary lg:hidden"
+            className="-ml-1 cursor-pointer rounded-md p-1 text-foreground outline-none hover:bg-foreground/[.04] focus-visible:ring-2 focus-visible:ring-primary lg:hidden"
           >
             {MenuIcon}
           </button>

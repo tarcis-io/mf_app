@@ -92,7 +92,7 @@ function Card({ children }: { children: ReactNode }) {
   return (
     <section
       aria-labelledby="batches-card-title"
-      className="w-full max-w-sm rounded-xl border border-foreground/[.08] bg-background p-6 text-left shadow-sm"
+      className="w-full rounded-xl border border-foreground/[.08] bg-background p-6 text-left shadow-sm"
     >
       <h2
         id="batches-card-title"
