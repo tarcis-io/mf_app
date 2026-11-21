@@ -54,6 +54,26 @@ must also set `AUTH_URL`, `AUTH_TRUST_HOST=true`, and `MF_SERVICE_URL` (the
 `mf_service` base URL — see [Backend](#backend)) — see
 [Deployment](#deployment) and [`DEPLOYMENT.md`](./DEPLOYMENT.md).
 
+### Local dev without Google
+
+To click through the authenticated pages without setting up Google OAuth, enable
+the dev-only login. In `.env.local` set just:
+
+```bash
+AUTH_SECRET=...        # still needed to sign the session (npx auth secret)
+AUTH_DEV_LOGIN=true
+```
+
+The login page then shows a **"Continue as dev user"** button that signs you in
+as a fake user (no Google, no `AUTH_GOOGLE_ID`/`AUTH_GOOGLE_SECRET` needed). This
+is **ignored when `NODE_ENV=production`** (as the Docker image sets), so it can
+never weaken the deployed app. `mf_service` is independent: if `MF_SERVICE_URL`
+is unset the Batches card just shows its error state and everything else works.
+
+If you'd rather verify pages without a browser session at all, the test suite
+([Development](#development)) renders every page with auth and `mf_service`
+stubbed — no services or secrets required.
+
 ## Run
 
 ```bash

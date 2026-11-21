@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { validateEnv } from "./env";
+import { isDevLoginEnabled, validateEnv } from "./env";
 
 // `validateEnv` reads `process.env` at call time. `vi.stubEnv` sets a variable
 // for the duration of the test and is undone by `vi.unstubAllEnvs()` — this
@@ -18,6 +18,7 @@ function clearAll() {
     "AUTH_URL",
     "AUTH_TRUST_HOST",
     "MF_SERVICE_URL",
+    "AUTH_DEV_LOGIN",
     "NEXT_PHASE",
   ]) {
     vi.stubEnv(key, undefined as unknown as string);
@@ -268,5 +269,74 @@ describe("validateEnv", () => {
       expect(message).toContain(".env.local");
       expect(message).toContain("npx auth secret");
     });
+  });
+
+  describe("dev login relaxes the Google requirement", () => {
+    it("passes with only AUTH_SECRET when dev login is enabled (dev)", () => {
+      clearAll();
+      vi.stubEnv("NODE_ENV", "development");
+      vi.stubEnv("AUTH_DEV_LOGIN", "true");
+      vi.stubEnv("AUTH_SECRET", "test-secret");
+      // AUTH_GOOGLE_ID / AUTH_GOOGLE_SECRET intentionally absent — not needed
+      // when signing in via the dev Credentials provider.
+
+      expect(() => validateEnv()).not.toThrow();
+    });
+
+    it("still requires AUTH_SECRET even with dev login", () => {
+      clearAll();
+      vi.stubEnv("NODE_ENV", "development");
+      vi.stubEnv("AUTH_DEV_LOGIN", "true");
+      // AUTH_SECRET absent — the session is still a signed JWT, so this must fail.
+
+      expect(() => validateEnv()).toThrow(/AUTH_SECRET/);
+    });
+
+    it("still requires Google creds when dev login is NOT enabled", () => {
+      clearAll();
+      vi.stubEnv("NODE_ENV", "development");
+      vi.stubEnv("AUTH_SECRET", "test-secret");
+      // No AUTH_DEV_LOGIN → Google is the only provider, so its creds are required.
+
+      expect(() => validateEnv()).toThrow(/AUTH_GOOGLE_ID/);
+    });
+  });
+});
+
+describe("isDevLoginEnabled", () => {
+  it("is true only when NODE_ENV!=production AND AUTH_DEV_LOGIN==='true'", () => {
+    clearAll();
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("AUTH_DEV_LOGIN", "true");
+
+    expect(isDevLoginEnabled()).toBe(true);
+  });
+
+  it("is false when the flag is absent", () => {
+    clearAll();
+    vi.stubEnv("NODE_ENV", "development");
+    // AUTH_DEV_LOGIN unset.
+
+    expect(isDevLoginEnabled()).toBe(false);
+  });
+
+  it("is false for any non-'true' flag value", () => {
+    for (const value of ["1", "yes", "TRUE", "", "false"]) {
+      clearAll();
+      vi.stubEnv("NODE_ENV", "development");
+      vi.stubEnv("AUTH_DEV_LOGIN", value);
+      // Strict exact-"true" match: anything else is off, so a stray value can't
+      // accidentally enable it.
+      expect(isDevLoginEnabled(), `value: ${JSON.stringify(value)}`).toBe(false);
+    }
+  });
+
+  it("is ALWAYS false in production, even with the flag set (prod safety)", () => {
+    clearAll();
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("AUTH_DEV_LOGIN", "true");
+    // The NODE_ENV gate must win: dev login can never be active in a deployed
+    // build (the Docker image sets NODE_ENV=production), regardless of the flag.
+    expect(isDevLoginEnabled()).toBe(false);
   });
 });

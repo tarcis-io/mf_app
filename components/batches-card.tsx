@@ -8,6 +8,7 @@ import {
   listBatches,
   summarizeBatches,
   type BatchStatus,
+  type BatchSummary,
 } from "@/lib/mf-service";
 
 /**
@@ -68,43 +69,14 @@ async function BatchesContent() {
     return <CardError />;
   }
 
+  // Do the throwing work (the fetch + reduce) outside the JSX return below.
+  // Constructing JSX inside a try/catch is flagged by react-hooks/error-
+  // boundaries — a try/catch can't catch a component's render-time errors, only
+  // the synchronous work here. That's all we need caught: listBatches is the
+  // sole thing that throws.
+  let summary: BatchSummary;
   try {
-    const summary = summarizeBatches(await listBatches(userId));
-    return (
-      <>
-        <div className="flex items-baseline gap-3">
-          <span className="text-4xl font-semibold tabular-nums tracking-tight text-foreground">
-            {summary.total}
-          </span>
-          <span className="text-sm text-foreground/50">
-            {summary.total === 1 ? "batch" : "batches"} total
-          </span>
-        </div>
-
-        <dl className="mt-5 flex flex-col gap-2">
-          {BATCH_STATUSES.map((status) => (
-            <div
-              key={status}
-              className="flex items-center justify-between text-sm"
-            >
-              <dt className="flex items-center gap-2 text-foreground/60">
-                {/* Colored indicator for the status. Decorative — the label text
-                    beside it carries the meaning — so hidden from assistive tech. */}
-                <span
-                  className="h-2 w-2 shrink-0 rounded-full"
-                  style={{ backgroundColor: STATUS_DOT_COLORS[status] }}
-                  aria-hidden="true"
-                />
-                {STATUS_LABELS[status]}
-              </dt>
-              <dd className="font-medium tabular-nums text-foreground/80">
-                {summary.counts[status]}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </>
-    );
+    summary = summarizeBatches(await listBatches(userId));
   } catch (error) {
     // listBatches throws on a missing MF_SERVICE_URL or a non-2xx response.
     // Keep the failure contained to this card, but log it server-side so a
@@ -113,6 +85,42 @@ async function BatchesContent() {
     console.error("BatchesCard: failed to load batches", error);
     return <CardError />;
   }
+
+  return (
+    <>
+      <div className="flex items-baseline gap-3">
+        <span className="text-4xl font-semibold tabular-nums tracking-tight text-foreground">
+          {summary.total}
+        </span>
+        <span className="text-sm text-foreground/50">
+          {summary.total === 1 ? "batch" : "batches"} total
+        </span>
+      </div>
+
+      <dl className="mt-5 flex flex-col gap-2">
+        {BATCH_STATUSES.map((status) => (
+          <div
+            key={status}
+            className="flex items-center justify-between text-sm"
+          >
+            <dt className="flex items-center gap-2 text-foreground/60">
+              {/* Colored indicator for the status. Decorative — the label text
+                  beside it carries the meaning — so hidden from assistive tech. */}
+              <span
+                className="h-2 w-2 shrink-0 rounded-full"
+                style={{ backgroundColor: STATUS_DOT_COLORS[status] }}
+                aria-hidden="true"
+              />
+              {STATUS_LABELS[status]}
+            </dt>
+            <dd className="font-medium tabular-nums text-foreground/80">
+              {summary.counts[status]}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </>
+  );
 }
 
 /**

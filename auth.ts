@@ -1,7 +1,8 @@
 import NextAuth, { type NextAuthConfig } from "next-auth";
+import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 
-import { validateEnv } from "@/env";
+import { isDevLoginEnabled, validateEnv } from "@/env";
 
 // Fail fast at server start if required secrets are missing, rather than
 // surfacing a confusing error at the first sign-in. No-op during `next build`.
@@ -81,8 +82,53 @@ export const session: SessionCallback = ({ session, token }) => {
   return session;
 };
 
+/** The `jwt` callback's exact signature, derived from Auth.js config. */
+type JwtCallback = NonNullable<NonNullable<NextAuthConfig["callbacks"]>["jwt"]>;
+
+/**
+ * Pin `token.sub` to the user id at sign-in. For the OAuth (Google) flow Auth.js
+ * already sets `sub` to the provider's account id, but the Credentials provider
+ * does not populate it reliably, so we copy it from the authenticated `user`
+ * here. This keeps the `session` callback above provider-agnostic: it always has
+ * a `token.sub` to surface as `session.user.id` (the `X-User-Id` for
+ * `mf_service`). Exported for direct unit testing (see `auth.test.ts`).
+ */
+export const jwt: JwtCallback = ({ token, user }) => {
+  if (user?.id) {
+    token.sub = user.id;
+  }
+  return token;
+};
+
+/**
+ * The fake identity returned by the dev-only Credentials login. Its `id` becomes
+ * `session.user.id` (and thus the `X-User-Id` sent to `mf_service`), so it's a
+ * stable, obviously-fake value.
+ */
+const DEV_USER = {
+  id: "dev-user",
+  name: "Dev User",
+  email: "dev@massflow.local",
+};
+
+/**
+ * Dev-only sign-in provider: one click logs you in as `DEV_USER`, with no
+ * password and no external service, so the authenticated pages can be browsed
+ * locally without Google OAuth. Only added to `providers` when
+ * `isDevLoginEnabled()` is true (never in production — see `@/env`). `authorize`
+ * ignores its input and always returns the same fake user.
+ */
+const devLoginProvider = Credentials({
+  id: "dev-login",
+  name: "Dev login",
+  credentials: {},
+  authorize: () => DEV_USER,
+});
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
-  providers: [Google],
+  // Google is always available; the dev-only Credentials provider is appended
+  // solely when explicitly enabled for local dev (see `isDevLoginEnabled`).
+  providers: isDevLoginEnabled() ? [Google, devLoginProvider] : [Google],
   // No database adapter is configured, so use stateless JWT sessions.
   session: { strategy: "jwt" },
   // Route unauthenticated users to our custom login page instead of the
@@ -92,6 +138,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   },
   callbacks: {
     authorized,
+    jwt,
     session,
   },
 });

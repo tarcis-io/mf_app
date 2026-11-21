@@ -9,12 +9,18 @@ vi.mock("next-auth", () => ({
   default: () => ({ handlers: {}, signIn: vi.fn(), signOut: vi.fn(), auth: vi.fn() }),
 }));
 vi.mock("next-auth/providers/google", () => ({ default: () => ({}) }));
+vi.mock("next-auth/providers/credentials", () => ({ default: () => ({}) }));
 // Importing `@/auth` runs `validateEnv()` at module load, which would throw
-// without real secrets in the environment. Stub it to a no-op; `env.ts` has
-// its own dedicated tests (see `env.test.ts`).
-vi.mock("@/env", () => ({ validateEnv: vi.fn() }));
+// without real secrets in the environment; it also reads `isDevLoginEnabled()`
+// to decide whether to register the dev provider. Stub both — `env.ts` has its
+// own dedicated tests (see `env.test.ts`). Dev login off here keeps `@/auth` on
+// its production-shaped path (Google only).
+vi.mock("@/env", () => ({
+  validateEnv: vi.fn(),
+  isDevLoginEnabled: vi.fn(() => false),
+}));
 
-import { authorized, session } from "./auth";
+import { authorized, jwt, session } from "./auth";
 
 /**
  * Build the minimal `{ auth, request }` argument the callback reads: the
@@ -96,5 +102,32 @@ describe("session callback", () => {
     const result = session(makeSessionParams(undefined));
 
     expect((result as { user: { id?: string } }).user.id).toBeUndefined();
+  });
+});
+
+/**
+ * Build the `{ token, user }` argument the `jwt` callback reads. `user` is
+ * present only on the initial sign-in; on later calls it's undefined.
+ */
+function makeJwtParams(userId: string | undefined) {
+  return {
+    token: {},
+    user: userId === undefined ? undefined : { id: userId },
+  } as unknown as Parameters<typeof jwt>[0];
+}
+
+describe("jwt callback", () => {
+  it("pins token.sub to the user id at sign-in (so session.user.id is set)", () => {
+    const result = jwt(makeJwtParams("dev-user"));
+
+    // This is what makes the Credentials provider's id flow through to
+    // session.user.id (the X-User-Id), matching the OAuth path.
+    expect((result as { sub?: string }).sub).toBe("dev-user");
+  });
+
+  it("leaves the token unchanged on later calls (no user)", () => {
+    const result = jwt(makeJwtParams(undefined));
+
+    expect((result as { sub?: string }).sub).toBeUndefined();
   });
 });

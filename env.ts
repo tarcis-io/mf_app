@@ -46,11 +46,43 @@ function show(value: string | undefined): string {
 const TRUTHY = new Set(["true", "1"]);
 
 /**
- * Variables required in every runtime environment (presence + non-empty).
- * These are the OAuth/session secrets the app cannot function without.
+ * Whether the dev-only Credentials login is enabled (see the provider in
+ * `@/auth` and the button in `app/login/page.tsx`). It lets you sign in as a
+ * fake user to click through the authenticated pages locally without Google
+ * OAuth.
+ *
+ * Double-gated so it can never be active in a deployed build:
+ *   1. `NODE_ENV !== "production"` — the Docker image sets `NODE_ENV=production`
+ *      (see Dockerfile), so this is false in every deploy regardless of flags.
+ *   2. `AUTH_DEV_LOGIN === "true"` — an explicit opt-in; absent by default, so
+ *      a normal `pnpm dev` without it still uses Google only.
+ *
+ * Exported so `@/auth` and the login page share the exact same gate, and so it
+ * can be unit-tested directly.
  */
-const ALWAYS_REQUIRED: EnvCheck[] = [
-  "AUTH_SECRET",
+export function isDevLoginEnabled(): boolean {
+  return (
+    process.env.NODE_ENV !== "production" &&
+    process.env.AUTH_DEV_LOGIN === "true"
+  );
+}
+
+/**
+ * The session-signing secret, required in every environment (even with dev
+ * login, which still issues a signed JWT session).
+ */
+const AUTH_SECRET_REQUIRED: EnvCheck = {
+  name: "AUTH_SECRET",
+  validate: isNonEmpty,
+  describe: () => `AUTH_SECRET is required but missing or empty.`,
+};
+
+/**
+ * The Google OAuth credentials. Required whenever Google is a usable provider —
+ * i.e. always, *except* when the dev-only Credentials login is enabled (then you
+ * can sign in without Google, so only `AUTH_SECRET` is strictly needed to run).
+ */
+const GOOGLE_CREDENTIALS_REQUIRED: EnvCheck[] = [
   "AUTH_GOOGLE_ID",
   "AUTH_GOOGLE_SECRET",
 ].map((name) => ({
@@ -120,7 +152,11 @@ export function validateEnv(): void {
   if (isBuildPhase()) return;
 
   const checks = [
-    ...ALWAYS_REQUIRED,
+    AUTH_SECRET_REQUIRED,
+    // Google creds aren't needed when the dev-only Credentials login is on —
+    // you sign in without Google then. (Dev login can't be enabled in
+    // production, so this never relaxes the prod contract; see isDevLoginEnabled.)
+    ...(isDevLoginEnabled() ? [] : GOOGLE_CREDENTIALS_REQUIRED),
     ...(process.env.NODE_ENV === "production" ? PRODUCTION_REQUIRED : []),
   ];
 

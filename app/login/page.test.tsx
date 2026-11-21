@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The animated canvas background is decorative and relies on browser canvas
 // APIs that jsdom does not implement. Stub it so these tests stay focused on
@@ -8,14 +8,27 @@ vi.mock("@/components/neural-network-background", () => ({
   default: () => <div data-testid="neural-network-background" />,
 }));
 
-// The sign-in control submits a Server Action (`signInAction`), which pulls in
-// the full Auth.js runtime (and real OAuth config). The page only needs the
-// action to exist as a `<form action>` reference, so stub the actions module.
+// The sign-in controls submit Server Actions, which pull in the full Auth.js
+// runtime (and real OAuth config). The page only needs the actions to exist as
+// `<form action>` references, so stub the actions module.
 vi.mock("@/app/actions", () => ({
   signInAction: vi.fn(),
+  signInDevAction: vi.fn(),
 }));
 
+// The page reads `isDevLoginEnabled()` to decide whether to show the dev-login
+// button; program it per test. Default off (the normal Google-only login).
+const { isDevLoginEnabled } = vi.hoisted(() => ({
+  isDevLoginEnabled: vi.fn(() => false),
+}));
+vi.mock("@/env", () => ({ isDevLoginEnabled }));
+
 import Login from "./page";
+
+beforeEach(() => {
+  isDevLoginEnabled.mockReset();
+  isDevLoginEnabled.mockReturnValue(false);
+});
 
 describe("Login page", () => {
   it("renders the branded wordmark", () => {
@@ -69,5 +82,35 @@ describe("Login page", () => {
 
     const contact = screen.getByRole("link", { name: "t@rcis.io" });
     expect(contact).toHaveAttribute("href", "mailto:t@rcis.io");
+  });
+
+  it("does not show the dev-login button by default", () => {
+    // isDevLoginEnabled() defaults to false (see beforeEach) — the normal
+    // Google-only login must not expose the dev shortcut.
+    render(<Login />);
+
+    expect(
+      screen.queryByRole("button", { name: /continue as dev user/i }),
+    ).toBeNull();
+    // Google is still offered.
+    expect(
+      screen.getByRole("button", { name: /continue with google/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the dev-login button when dev login is enabled", () => {
+    isDevLoginEnabled.mockReturnValue(true);
+
+    render(<Login />);
+
+    const devButton = screen.getByRole("button", {
+      name: /continue as dev user/i,
+    });
+    expect(devButton).toHaveAttribute("type", "submit");
+    expect(devButton.closest("form")).not.toBeNull();
+    // Google remains available alongside the dev shortcut.
+    expect(
+      screen.getByRole("button", { name: /continue with google/i }),
+    ).toBeInTheDocument();
   });
 });

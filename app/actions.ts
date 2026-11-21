@@ -1,6 +1,7 @@
 "use server";
 
 import { signIn, signOut } from "@/auth";
+import { isDevLoginEnabled } from "@/env";
 
 /**
  * The app's authentication Server Actions, kept together in one `"use server"`
@@ -19,6 +20,21 @@ import { signIn, signOut } from "@/auth";
 /** Begin Google sign-in; on success, land the user on the home page. */
 export async function signInAction(): Promise<void> {
   await signIn("google", { redirectTo: "/" });
+}
+
+/**
+ * Dev-only: sign in as the fake `DEV_USER` via the Credentials provider (see
+ * `@/auth`), landing on the home page — so the authenticated pages can be
+ * browsed locally without Google. Guarded by `isDevLoginEnabled()` as
+ * defense-in-depth: even if its trigger were somehow rendered outside dev, the
+ * action refuses rather than signing anyone in. (The provider itself also isn't
+ * registered unless dev login is enabled, so this would otherwise error.)
+ */
+export async function signInDevAction(): Promise<void> {
+  if (!isDevLoginEnabled()) {
+    throw new Error("Dev login is not enabled.");
+  }
+  await signIn("dev-login", { redirectTo: "/" });
 }
 
 /** Sign the current user out and return them to the login page. */
