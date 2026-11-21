@@ -246,17 +246,23 @@ describe("BatchesList", () => {
   });
 
   describe("status badge color", () => {
+    // The badge derives its background + text from the status's seed color via
+    // `color-mix(in srgb, <seed> …)`. jsdom normalizes the seed hex to its
+    // rgb() form inside the stored inline style, so assert on that:
+    //   #ef4444 -> rgb(239, 68, 68)   #22c55e -> rgb(34, 197, 94)
     // The status labels ("Error", "Processed", …) also appear as <option>s in
     // the status <select>, so badge lookups are scoped to the results row to
     // avoid matching the dropdown options.
+    const RED = "rgb(239, 68, 68)";
+    const GREEN = "rgb(34, 197, 94)";
+
     it("tints each badge from its status color (error = red-derived)", () => {
       render(<BatchesList batches={[makeItem({ name: "Boom", status: "error" })]} />);
 
       const badge = within(screen.getByRole("listitem")).getByText("Error");
-      // The badge derives background + text from the #ef4444 seed via color-mix.
-      // jsdom keeps the inline `color-mix(...)` string as-is, so assert the seed
-      // hue is what's being mixed rather than a resolved rgb().
-      expect(badge.getAttribute("style")).toContain("#ef4444");
+      const style = badge.getAttribute("style") ?? "";
+      // The seed red is mixed into both the background wash and the text color.
+      expect(style).toContain(`color-mix(in srgb, ${RED}`);
     });
 
     it("uses different colors for different statuses", () => {
@@ -270,10 +276,10 @@ describe("BatchesList", () => {
       );
 
       const [first, second] = rows();
-      const processed = within(first).getByText("Processed").getAttribute("style");
-      const error = within(second).getByText("Error").getAttribute("style");
-      expect(processed).toContain("#22c55e"); // green
-      expect(error).toContain("#ef4444"); // red
+      const processed = within(first).getByText("Processed").getAttribute("style") ?? "";
+      const error = within(second).getByText("Error").getAttribute("style") ?? "";
+      expect(processed).toContain(GREEN);
+      expect(error).toContain(RED);
       expect(processed).not.toBe(error);
     });
   });
