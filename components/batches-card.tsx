@@ -3,42 +3,13 @@ import type { ReactNode } from "react";
 
 import { auth } from "@/auth";
 import BatchesIcon from "@/components/batches-icon";
+import { STATUS_COLORS, STATUS_LABELS } from "@/components/batch-status";
 import {
   BATCH_STATUSES,
   listBatches,
   summarizeBatches,
-  type BatchStatus,
   type BatchSummary,
 } from "@/lib/mf-service";
-
-/**
- * Human-readable label for each batch status, shown in the breakdown. Keyed by
- * every `BatchStatus` so the mapping is exhaustive (a new status won't compile
- * until it's labelled here).
- */
-const STATUS_LABELS: Record<BatchStatus, string> = {
-  creating: "Creating",
-  created: "Created",
-  processing: "Processing",
-  processed: "Processed",
-  error: "Error",
-};
-
-/**
- * Dot color for each status, following the lifecycle with conventional
- * traffic-light semantics: the pre-processing phase is neutral/cool (slate →
- * blue), active work is amber, success is green, and failure is red. Keyed by
- * every `BatchStatus` so a new status won't compile until it's given a color.
- * Hex values (not Tailwind classes) are applied inline on the dot — these are
- * one-off indicator colors, not part of the app's theme tokens in globals.css.
- */
-const STATUS_DOT_COLORS: Record<BatchStatus, string> = {
-  creating: "#94a3b8", // slate
-  created: "#3b82f6", // blue
-  processing: "#f59e0b", // amber
-  processed: "#22c55e", // green
-  error: "#ef4444", // red
-};
 
 /**
  * Home-page card summarising the signed-in user's batches: the total, then a
@@ -108,7 +79,7 @@ async function BatchesContent() {
                   beside it carries the meaning — so hidden from assistive tech. */}
               <span
                 className="h-2 w-2 shrink-0 rounded-full"
-                style={{ backgroundColor: STATUS_DOT_COLORS[status] }}
+                style={{ backgroundColor: STATUS_COLORS[status] }}
                 aria-hidden="true"
               />
               {STATUS_LABELS[status]}
@@ -144,7 +115,9 @@ function Card({ children }: { children: ReactNode }) {
       <div className="mt-4">{children}</div>
       <Link
         href="/batches"
-        className="mt-6 flex h-10 items-center justify-center gap-1.5 rounded-lg border border-foreground/15 px-4 text-sm font-medium text-foreground/80 outline-none transition-colors hover:border-foreground/25 hover:bg-foreground/[.04] hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary motion-reduce:transition-none"
+        // Full-width on mobile; shrinks to its content (fixed/intrinsic size,
+        // left-aligned in this text-left card) on lg+.
+        className="mt-6 flex h-10 w-full items-center justify-center gap-1.5 rounded-lg border border-foreground/15 px-4 text-sm font-medium text-foreground/80 outline-none transition-colors hover:border-foreground/25 hover:bg-foreground/[.04] hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary motion-reduce:transition-none lg:inline-flex lg:w-auto"
       >
         View all batches
         <span aria-hidden="true">&rarr;</span>
