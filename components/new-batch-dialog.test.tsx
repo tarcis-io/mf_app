@@ -46,6 +46,18 @@ function dialogEl(): HTMLDialogElement {
   return document.querySelector("dialog") as HTMLDialogElement;
 }
 
+/**
+ * Submit the form. Fires the form's `submit` event directly rather than
+ * clicking the submit button: in jsdom a click on a `type="submit"` button does
+ * not reliably dispatch the enclosing form's submit event (more so inside a
+ * <dialog>), so the component's `onSubmit` wouldn't run. The component reads the
+ * FormData from the same form element, so submitting it is equivalent to a real
+ * user submit.
+ */
+function submitForm() {
+  fireEvent.submit(document.querySelector("form") as HTMLFormElement);
+}
+
 /** Fill the Name field and choose a valid file for every required input. */
 function fillValidForm() {
   fireEvent.change(screen.getByLabelText("Name"), {
@@ -197,10 +209,11 @@ describe("NewBatchDialog", () => {
       openDialog();
       fillValidForm();
 
-      fireEvent.click(screen.getByRole("button", { name: /create batch/i }));
+      submitForm();
 
-      // The action is called with the form's FormData (name + 5 files).
-      expect(createBatchAction).toHaveBeenCalledOnce();
+      // The action is called with the form's FormData (name + 5 files). It runs
+      // inside a transition, so await the call rather than asserting synchronously.
+      await vi.waitFor(() => expect(createBatchAction).toHaveBeenCalledOnce());
       const form = createBatchAction.mock.calls[0][0] as FormData;
       expect(form.get("name")).toBe("Spring run");
 
@@ -218,7 +231,7 @@ describe("NewBatchDialog", () => {
       openDialog();
       fillValidForm();
 
-      fireEvent.click(screen.getByRole("button", { name: /create batch/i }));
+      submitForm();
 
       const alert = await screen.findByRole("alert");
       expect(alert).toHaveTextContent(/already exists/i);
@@ -236,7 +249,7 @@ describe("NewBatchDialog", () => {
       openDialog();
       fillValidForm();
 
-      fireEvent.click(screen.getByRole("button", { name: /create batch/i }));
+      submitForm();
 
       const alert = await screen.findByRole("alert");
       expect(alert).toHaveTextContent(/couldn't create the batch/i);
