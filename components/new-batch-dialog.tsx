@@ -1,19 +1,10 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  useTransition,
-} from "react";
+import { useCallback, useId, useRef, useState, useTransition } from "react";
 
 import { createBatchAction } from "@/app/batches/actions";
-import {
-  BATCH_FILE_FIELDS,
-  type BatchFileKey,
-} from "@/lib/mf-service";
+import Dialog from "@/components/dialog";
+import { BATCH_FILE_FIELDS, type BatchFileKey } from "@/lib/mf-service";
 
 /**
  * Friendly labels for the file inputs, keyed by {@link BatchFileKey}. The field
@@ -43,74 +34,58 @@ function hasExpectedExtension(filename: string, accept: string): boolean {
 /**
  * The "New batch" trigger button plus the modal dialog that creates a batch.
  *
- * A Client Component: it owns the form state, the open/close of a native
- * `<dialog>`, and client-side validation. The actual upload runs server-side
- * via `createBatchAction` (so the `mf_service` URL and the per-user header never
- * reach the browser).
+ * A Client Component: it owns the open state, the form state, and client-side
+ * validation. The modal shell (native `<dialog>`, backdrop-click / Escape to
+ * close) comes from the shared `Dialog`; the actual upload runs server-side via
+ * `createBatchAction`, so the `mf_service` URL and the per-user header never
+ * reach the browser.
  *
- * The dialog uses the platform `<dialog>` element opened with `showModal()`, so
- * it gets a backdrop, focus trapping, and Escape-to-close for free. Clicking the
- * backdrop also closes it (handled below). Fields — a required Name plus the
- * five required files grouped into an MZmine card (3) and a GNPS card (2) — are
- * all mandatory, and each file must carry its expected extension before the
- * form can submit. Server errors (a duplicate name, a rejected upload, a network
- * failure) surface in a single banner at the top; on success the dialog closes,
- * resets, and the list revalidates so the new `creating` batch appears.
+ * Fields — a required Name plus the five required files grouped into an MZmine
+ * card (3) and a GNPS card (2) — are all mandatory, and each file must carry its
+ * expected extension before the form can submit. Server errors (a duplicate
+ * name, a rejected upload, a network failure) surface in a single banner at the
+ * top; on success the dialog closes and the list revalidates so the new
+ * `creating` batch appears. The form is mounted only while open (keyed on each
+ * open), so it always starts blank.
  */
 export default function NewBatchDialog() {
-  const dialogRef = useRef<HTMLDialogElement>(null);
+  const [open, setOpen] = useState(false);
+  const close = useCallback(() => setOpen(false), []);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-primary px-3 text-sm font-medium text-background outline-none transition-colors hover:bg-primary-hover focus-visible:ring-2 focus-visible:ring-primary motion-reduce:transition-none"
+      >
+        <span aria-hidden="true" className="text-base leading-none">
+          +
+        </span>
+        New
+      </button>
+
+      <Dialog open={open} onClose={close} title="New batch">
+        {/* Keyed on `open` so the form remounts fresh each time it's opened,
+            clearing the name and the (un-clearable) file inputs. */}
+        {open ? <NewBatchForm key="open" onDone={close} /> : null}
+      </Dialog>
+    </>
+  );
+}
+
+/** The batch-creation form body (everything inside the dialog shell). */
+function NewBatchForm({ onDone }: { onDone: () => void }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  // Bumped on each reset to remount the uncontrolled form (clears file inputs,
-  // which can't be cleared by setting value).
-  const [formKey, setFormKey] = useState(0);
-  // Mirrors which files are chosen + valid, to drive the submit button's enabled
-  // state and the per-field hint. Keyed by BatchFileKey.
+  // Mirrors which files are chosen + valid, to drive the submit button's
+  // enabled state and the per-field hint. Keyed by BatchFileKey.
   const [fileState, setFileState] = useState<
     Partial<Record<BatchFileKey, { name: string; valid: boolean }>>
   >({});
   const [name, setName] = useState("");
-
   const errorId = useId();
-
-  const resetForm = useCallback(() => {
-    setError(null);
-    setName("");
-    setFileState({});
-    setFormKey((k) => k + 1);
-  }, []);
-
-  const open = useCallback(() => {
-    resetForm();
-    dialogRef.current?.showModal();
-  }, [resetForm]);
-
-  const close = useCallback(() => {
-    dialogRef.current?.close();
-  }, []);
-
-  // Clear state whenever the dialog closes (via Cancel, Escape, backdrop, or a
-  // successful submit), so the next open starts fresh. The native `close` event
-  // fires for all of those.
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    const onClose = () => resetForm();
-    dialog.addEventListener("close", onClose);
-    return () => dialog.removeEventListener("close", onClose);
-  }, [resetForm]);
-
-  // Close when the backdrop is clicked. With `showModal()` the backdrop is a
-  // pseudo-element of the dialog, so a click on it has the <dialog> itself as
-  // its target; a click on the inner content does not. Comparing against the
-  // dialog element distinguishes the two.
-  const onDialogClick = useCallback(
-    (event: React.MouseEvent<HTMLDialogElement>) => {
-      if (event.target === dialogRef.current) close();
-    },
-    [close],
-  );
 
   const onFileChange = useCallback(
     (key: BatchFileKey, accept: string, file: File | undefined) => {
@@ -131,8 +106,8 @@ export default function NewBatchDialog() {
     [],
   );
 
-  // The form is submittable only when the name is non-empty and every required
-  // file is both chosen and has a valid extension.
+  // Submittable only when the name is non-empty and every required file is both
+  // chosen and has a valid extension.
   const allFilesValid = BATCH_FILE_FIELDS.every(
     (f) => fileState[f.key]?.valid === true,
   );
@@ -146,102 +121,66 @@ export default function NewBatchDialog() {
       startTransition(async () => {
         const result = await createBatchAction(formData);
         if (result.ok) {
-          close();
+          onDone();
         } else {
-          setError(result.error ?? "Couldn't create the batch. Please try again.");
+          setError(
+            result.error ?? "Couldn't create the batch. Please try again.",
+          );
         }
       });
     },
-    [canSubmit, close],
+    [canSubmit, onDone],
   );
 
   return (
-    <>
-      <button
-        type="button"
-        onClick={open}
-        className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-primary px-3 text-sm font-medium text-background outline-none transition-colors hover:bg-primary-hover focus-visible:ring-2 focus-visible:ring-primary motion-reduce:transition-none"
-      >
-        <span aria-hidden="true" className="text-base leading-none">
-          +
-        </span>
-        New
-      </button>
+    <form ref={formRef} onSubmit={onSubmit} className="flex min-h-0 flex-col">
+      <div className="flex flex-col gap-5 overflow-y-auto px-6 py-5">
+        {error ? (
+          <p
+            id={errorId}
+            role="alert"
+            className="rounded-lg border border-[#ef4444]/30 bg-[#ef4444]/[.08] px-3 py-2 text-sm text-[#b91c1c]"
+          >
+            {error}
+          </p>
+        ) : null}
 
-      <dialog
-        ref={dialogRef}
-        onClick={onDialogClick}
-        aria-labelledby={`${errorId}-title`}
-        className="m-auto w-[calc(100%-2rem)] max-w-lg rounded-xl bg-background p-0 text-foreground shadow-xl backdrop:bg-foreground/40"
-      >
-        {/* Inner wrapper: clicks here must NOT close (only backdrop clicks do),
-            which works because this element is not the <dialog> itself. */}
-        <form
-          ref={formRef}
-          key={formKey}
-          onSubmit={onSubmit}
-          className="flex max-h-[85vh] flex-col"
-        >
-          <div className="flex items-center justify-between gap-3 border-b border-foreground/[.08] px-6 py-4">
-            <h2
-              id={`${errorId}-title`}
-              className="text-base font-semibold tracking-tight text-foreground"
-            >
-              New batch
-            </h2>
-          </div>
+        <NameField value={name} onChange={setName} />
 
-          <div className="flex flex-col gap-5 overflow-y-auto px-6 py-5">
-            {error ? (
-              <p
-                id={errorId}
-                role="alert"
-                className="rounded-lg border border-[#ef4444]/30 bg-[#ef4444]/[.08] px-3 py-2 text-sm text-[#b91c1c]"
-              >
-                {error}
-              </p>
-            ) : null}
-
-            <NameField value={name} onChange={setName} />
-
-            {GROUPS.map((group) => (
-              <FileCard key={group.id} title={group.title}>
-                {BATCH_FILE_FIELDS.filter((f) => f.group === group.id).map(
-                  (f) => (
-                    <FileField
-                      key={f.key}
-                      field={f.field}
-                      label={FILE_LABELS[f.key]}
-                      accept={f.accept}
-                      chosen={fileState[f.key]}
-                      onChange={(file) => onFileChange(f.key, f.accept, file)}
-                    />
-                  ),
-                )}
-              </FileCard>
+        {GROUPS.map((group) => (
+          <FileCard key={group.id} title={group.title}>
+            {BATCH_FILE_FIELDS.filter((f) => f.group === group.id).map((f) => (
+              <FileField
+                key={f.key}
+                field={f.field}
+                label={FILE_LABELS[f.key]}
+                accept={f.accept}
+                chosen={fileState[f.key]}
+                onChange={(file) => onFileChange(f.key, f.accept, file)}
+              />
             ))}
-          </div>
+          </FileCard>
+        ))}
+      </div>
 
-          <div className="flex justify-end gap-3 border-t border-foreground/[.08] px-6 py-4">
-            <button
-              type="button"
-              onClick={close}
-              disabled={isPending}
-              className="inline-flex h-10 cursor-pointer items-center justify-center rounded-lg border border-foreground/15 px-4 text-sm font-medium text-foreground/80 outline-none transition-colors hover:border-foreground/25 hover:bg-foreground/[.04] hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={!canSubmit}
-              className="inline-flex h-10 cursor-pointer items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-background outline-none transition-colors hover:bg-primary-hover focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none"
-            >
-              {isPending ? "Creating…" : "Create batch"}
-            </button>
-          </div>
-        </form>
-      </dialog>
-    </>
+      <div className="flex justify-end gap-3 border-t border-foreground/[.08] px-6 py-4">
+        <button
+          type="button"
+          onClick={onDone}
+          disabled={isPending}
+          className="inline-flex h-10 cursor-pointer items-center justify-center rounded-lg border border-foreground/15 px-4 text-sm font-medium text-foreground/80 outline-none transition-colors hover:border-foreground/25 hover:bg-foreground/[.04] hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={!canSubmit}
+          className="inline-flex h-10 cursor-pointer items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-background outline-none transition-colors hover:bg-primary-hover focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none"
+        >
+          {isPending ? "Creating…" : "Create batch"}
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -293,9 +232,9 @@ function FileCard({
 
 /**
  * One required file input: a label, the native file picker (accept hint set to
- * the expected extension), and a line showing the chosen filename or a wrong-
- * extension warning. The input is `required` and carries the mf_service field
- * name; the server renames it to the expected filename on upload.
+ * the expected extension), and a line showing a wrong-extension warning. The
+ * input is `required` and carries the mf_service field name; the server renames
+ * it to the expected filename on upload.
  */
 function FileField({
   field,

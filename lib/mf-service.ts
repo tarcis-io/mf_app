@@ -255,6 +255,93 @@ export async function createBatch(
 }
 
 /**
+ * Thrown by {@link renameBatch} / {@link deleteBatch} when mf_service reports
+ * the batch doesn't exist for this user (HTTP `404` — absent, or owned by
+ * someone else, which reads as absent). A distinct type so callers can tell
+ * "already gone" apart from a transient failure (e.g. offer to refresh the list
+ * rather than ask the user to retry).
+ */
+export class BatchNotFoundError extends Error {
+  constructor(id: string) {
+    super(`Batch "${id}" was not found.`);
+    this.name = "BatchNotFoundError";
+  }
+}
+
+/**
+ * Rename a batch via `PATCH {MF_SERVICE_URL}/batches/{id}` with a JSON
+ * `{ name }` body. Returns the updated `Batch`. The name is the only mutable
+ * field; all others are server-managed.
+ *
+ * Identity goes in `X-User-Id` (the Google `sub`; see `@/auth`), and the id is
+ * scoped to that user — another user's batch reads as `404`. Throws
+ * {@link DuplicateBatchNameError} on `409` (the new name is taken),
+ * {@link BatchNotFoundError} on `404`, and a generic `Error` on any other
+ * non-2xx. Capped at `REQUEST_TIMEOUT_MS`.
+ */
+export async function renameBatch(
+  userId: string,
+  id: string,
+  name: string,
+): Promise<Batch> {
+  const response = await fetch(`${baseUrl()}/batches/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: {
+      "X-User-Id": userId,
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ name }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+
+  if (response.status === 409) {
+    throw new DuplicateBatchNameError(name);
+  }
+  if (response.status === 404) {
+    throw new BatchNotFoundError(id);
+  }
+  if (!response.ok) {
+    throw new Error(
+      `mf_service PATCH /batches/${id} failed: ${response.status} ${response.statusText}`,
+    );
+  }
+
+  return (await response.json()) as Batch;
+}
+
+/**
+ * Delete a batch via `DELETE {MF_SERVICE_URL}/batches/{id}`. Resolves on
+ * success (mf_service replies `200`/`204`, which may carry no body, so nothing
+ * is parsed or returned).
+ *
+ * Identity goes in `X-User-Id` (the Google `sub`; see `@/auth`), scoped to that
+ * user. Throws {@link BatchNotFoundError} on `404` (absent or another user's),
+ * and a generic `Error` on any other non-2xx. Capped at `REQUEST_TIMEOUT_MS`.
+ */
+export async function deleteBatch(userId: string, id: string): Promise<void> {
+  const response = await fetch(`${baseUrl()}/batches/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: {
+      "X-User-Id": userId,
+      Accept: "application/json",
+    },
+    cache: "no-store",
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+
+  if (response.status === 404) {
+    throw new BatchNotFoundError(id);
+  }
+  if (!response.ok) {
+    throw new Error(
+      `mf_service DELETE /batches/${id} failed: ${response.status} ${response.statusText}`,
+    );
+  }
+}
+
+/**
  * Reduce a list of batches to a total and a per-status count. Every
  * `BatchStatus` is present in `counts` (zero when none), so callers can render
  * a stable set of rows without missing-key checks. An unexpected status value

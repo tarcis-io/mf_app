@@ -1,5 +1,37 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// BatchesList now renders the edit/delete dialogs, which import the batches
+// Server Actions (a "use server" module that pulls in @/auth). Stub that module
+// so importing the list here doesn't spin up the Auth.js runtime. These tests
+// cover the list's own rendering/filtering + that the row actions open the
+// right dialog; the actions' behavior is covered in app/batches/actions.test.ts.
+const { renameBatchAction, deleteBatchAction } = vi.hoisted(() => ({
+  renameBatchAction: vi.fn(),
+  deleteBatchAction: vi.fn(),
+}));
+vi.mock("@/app/batches/actions", () => ({
+  renameBatchAction,
+  deleteBatchAction,
+}));
+
+// jsdom (31.x) doesn't implement <dialog>.showModal()/close(); the dialogs use
+// them. Install the same minimal polyfill used by the dialog tests so opening a
+// dialog from a row action doesn't throw.
+function installDialogPolyfill() {
+  const proto = HTMLDialogElement.prototype;
+  if (!proto.showModal) {
+    proto.showModal = function (this: HTMLDialogElement) {
+      this.setAttribute("open", "");
+    };
+  }
+  if (!proto.close) {
+    proto.close = function (this: HTMLDialogElement) {
+      this.removeAttribute("open");
+      this.dispatchEvent(new Event("close"));
+    };
+  }
+}
 
 import BatchesList, { type BatchListItem } from "./batches-list";
 
@@ -34,6 +66,12 @@ function nameOf(row: HTMLElement): string {
 function names() {
   return rows().map(nameOf);
 }
+
+beforeEach(() => {
+  installDialogPolyfill();
+  renameBatchAction.mockReset();
+  deleteBatchAction.mockReset();
+});
 
 describe("BatchesList", () => {
   it("renders every batch with its name, status badge, and created date", () => {
@@ -281,6 +319,71 @@ describe("BatchesList", () => {
       expect(processed).toContain(GREEN);
       expect(error).toContain(RED);
       expect(processed).not.toBe(error);
+    });
+  });
+
+  describe("row actions", () => {
+    it("renders an edit and a delete icon button on every row, labelled by batch", () => {
+      render(
+        <BatchesList
+          batches={[makeItem({ name: "Spring run" }), makeItem({ name: "Autumn" })]}
+        />,
+      );
+
+      // Accessible names include the batch name so the action is unambiguous.
+      expect(
+        screen.getByRole("button", { name: "Edit Spring run" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Delete Spring run" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Edit Autumn" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Delete Autumn" }),
+      ).toBeInTheDocument();
+    });
+
+    it("opens the edit dialog for the clicked row, prefilled with its name", () => {
+      render(<BatchesList batches={[makeItem({ name: "Spring run" })]} />);
+
+      fireEvent.click(screen.getByRole("button", { name: "Edit Spring run" }));
+
+      const dialog = screen.getByRole("dialog", { name: "Edit batch" });
+      expect(dialog).toBeInTheDocument();
+      // The name field is prefilled with the row's current name.
+      expect(within(dialog).getByLabelText("Name")).toHaveValue("Spring run");
+    });
+
+    it("opens the delete confirmation for the clicked row, naming the batch", () => {
+      render(<BatchesList batches={[makeItem({ name: "Spring run" })]} />);
+
+      fireEvent.click(screen.getByRole("button", { name: "Delete Spring run" }));
+
+      const dialog = screen.getByRole("dialog", { name: "Delete batch" });
+      expect(dialog).toBeInTheDocument();
+      expect(within(dialog).getByText("Spring run")).toBeInTheDocument();
+      expect(
+        within(dialog).getByRole("button", { name: /delete batch/i }),
+      ).toBeInTheDocument();
+    });
+
+    it("targets the correct batch when multiple rows exist", () => {
+      render(
+        <BatchesList
+          batches={[
+            makeItem({ name: "First" }),
+            makeItem({ name: "Second" }),
+          ]}
+        />,
+      );
+
+      // Edit the second row; the dialog must prefill "Second", not "First".
+      fireEvent.click(screen.getByRole("button", { name: "Edit Second" }));
+
+      const dialog = screen.getByRole("dialog", { name: "Edit batch" });
+      expect(within(dialog).getByLabelText("Name")).toHaveValue("Second");
     });
   });
 });

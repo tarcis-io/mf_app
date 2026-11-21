@@ -1,8 +1,12 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useCallback, useId, useMemo, useState } from "react";
 
 import { StatusBadge, STATUS_LABELS } from "@/components/batch-status";
+import DeleteBatchDialog from "@/components/delete-batch-dialog";
+import EditBatchDialog, {
+  type EditableBatch,
+} from "@/components/edit-batch-dialog";
 import { BATCH_STATUSES, type BatchStatus } from "@/lib/mf-service";
 
 /**
@@ -74,6 +78,14 @@ export default function BatchesList({ batches }: BatchesListProps) {
   // empty state branches on whether any batches exist at all.
   const hasNoBatches = batches.length === 0;
 
+  // Which batch (if any) each row-action dialog is open for. Only the id + name
+  // are needed to drive edit/delete, so pass just those.
+  const [editing, setEditing] = useState<EditableBatch | null>(null);
+  const [deleting, setDeleting] = useState<EditableBatch | null>(null);
+
+  const closeEdit = useCallback(() => setEditing(null), []);
+  const closeDelete = useCallback(() => setDeleting(null), []);
+
   return (
     <div className="flex flex-col gap-4">
       {/* Filters. Stack on mobile; sit side by side (name taking the slack) on
@@ -144,12 +156,120 @@ export default function BatchesList({ batches }: BatchesListProps) {
                   {batch.createdLabel}
                 </time>
               </div>
-              <StatusBadge status={batch.status} />
+              {/* Right side: status, then the per-row edit/delete actions. */}
+              <div className="flex shrink-0 items-center gap-1.5">
+                <StatusBadge status={batch.status} />
+                <div className="flex items-center gap-0.5">
+                  <IconButton
+                    label={`Edit ${batch.name}`}
+                    onClick={() =>
+                      setEditing({ id: batch.id, name: batch.name })
+                    }
+                  >
+                    <PencilIcon />
+                  </IconButton>
+                  <IconButton
+                    label={`Delete ${batch.name}`}
+                    destructive
+                    onClick={() =>
+                      setDeleting({ id: batch.id, name: batch.name })
+                    }
+                  >
+                    <TrashIcon />
+                  </IconButton>
+                </div>
+              </div>
             </li>
           ))}
         </ul>
       )}
+
+      {/* Row-action dialogs, rendered once and controlled by the state above.
+          `onDone` just clears the target — the list itself refreshes because
+          the actions call revalidatePath. */}
+      <EditBatchDialog
+        batch={editing}
+        open={editing !== null}
+        onClose={closeEdit}
+        onDone={closeEdit}
+      />
+      <DeleteBatchDialog
+        batch={deleting}
+        open={deleting !== null}
+        onClose={closeDelete}
+        onDone={closeDelete}
+      />
     </div>
+  );
+}
+
+/** A compact, square icon button for the per-row actions. */
+function IconButton({
+  label,
+  onClick,
+  destructive = false,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  destructive?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className={`inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-foreground/50 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary motion-reduce:transition-none ${
+        destructive
+          ? "hover:bg-[#ef4444]/[.1] hover:text-[#dc2626]"
+          : "hover:bg-foreground/[.06] hover:text-foreground"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** Pencil glyph for the edit action (decorative; the button carries the label). */
+function PencilIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-4 w-4"
+    >
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  );
+}
+
+/** Trash glyph for the delete action (decorative; the button carries the label). */
+function TrashIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-4 w-4"
+    >
+      <path d="M3 6h18" />
+      <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+    </svg>
   );
 }
 

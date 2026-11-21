@@ -3,9 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   BATCH_FILE_FIELDS,
   BATCH_STATUSES,
+  BatchNotFoundError,
   createBatch,
+  deleteBatch,
   DuplicateBatchNameError,
   listBatches,
+  renameBatch,
   summarizeBatches,
   type Batch,
   type BatchFiles,
@@ -350,5 +353,149 @@ describe("createBatch", () => {
       createBatch("user-123", "Spring run", makeFiles()),
     ).rejects.toThrow(/MF_SERVICE_URL/);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("renameBatch", () => {
+  beforeEach(() => {
+    vi.stubEnv("MF_SERVICE_URL", "https://mf-service.massflow.ai");
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it("PATCHes {MF_SERVICE_URL}/batches/{id} with JSON {name} and X-User-Id", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(JSON.stringify(makeBatch({ name: "Renamed" })), {
+          status: 200,
+        }),
+      );
+
+    await renameBatch("google-sub-123", "batch-1", "Renamed");
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://mf-service.massflow.ai/batches/batch-1");
+    expect(init?.method).toBe("PATCH");
+    expect(new Headers(init?.headers).get("X-User-Id")).toBe("google-sub-123");
+    expect(new Headers(init?.headers).get("Content-Type")).toBe(
+      "application/json",
+    );
+    expect(JSON.parse(init?.body as string)).toEqual({ name: "Renamed" });
+  });
+
+  it("url-encodes the batch id in the path", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(JSON.stringify(makeBatch()), { status: 200 }));
+
+    await renameBatch("user-123", "a/b c", "Renamed");
+
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "https://mf-service.massflow.ai/batches/a%2Fb%20c",
+    );
+  });
+
+  it("returns the updated batch on success", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(makeBatch({ name: "Renamed" })), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const batch = await renameBatch("user-123", "batch-1", "Renamed");
+    expect(batch.name).toBe("Renamed");
+  });
+
+  it("throws DuplicateBatchNameError on 409", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("", { status: 409 }),
+    );
+    await expect(
+      renameBatch("user-123", "batch-1", "Taken"),
+    ).rejects.toBeInstanceOf(DuplicateBatchNameError);
+  });
+
+  it("throws BatchNotFoundError on 404", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("", { status: 404 }),
+    );
+    await expect(
+      renameBatch("user-123", "missing", "Renamed"),
+    ).rejects.toBeInstanceOf(BatchNotFoundError);
+  });
+
+  it("throws a generic error on other non-2xx", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("", { status: 500, statusText: "Internal Server Error" }),
+    );
+    const err = await renameBatch("user-123", "batch-1", "Renamed").catch(
+      (e) => e,
+    );
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(DuplicateBatchNameError);
+    expect(err).not.toBeInstanceOf(BatchNotFoundError);
+    expect((err as Error).message).toMatch(/500/);
+  });
+});
+
+describe("deleteBatch", () => {
+  beforeEach(() => {
+    vi.stubEnv("MF_SERVICE_URL", "https://mf-service.massflow.ai");
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it("DELETEs {MF_SERVICE_URL}/batches/{id} with X-User-Id", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(null, { status: 204 }));
+
+    await deleteBatch("google-sub-123", "batch-1");
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://mf-service.massflow.ai/batches/batch-1");
+    expect(init?.method).toBe("DELETE");
+    expect(new Headers(init?.headers).get("X-User-Id")).toBe("google-sub-123");
+  });
+
+  it("resolves on a 204 (no body)", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(null, { status: 204 }),
+    );
+    await expect(deleteBatch("user-123", "batch-1")).resolves.toBeUndefined();
+  });
+
+  it("resolves on a 200", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(makeBatch()), { status: 200 }),
+    );
+    await expect(deleteBatch("user-123", "batch-1")).resolves.toBeUndefined();
+  });
+
+  it("throws BatchNotFoundError on 404", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("", { status: 404 }),
+    );
+    await expect(deleteBatch("user-123", "missing")).rejects.toBeInstanceOf(
+      BatchNotFoundError,
+    );
+  });
+
+  it("throws a generic error on other non-2xx", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("", { status: 500, statusText: "Internal Server Error" }),
+    );
+    const err = await deleteBatch("user-123", "batch-1").catch((e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(BatchNotFoundError);
+    expect((err as Error).message).toMatch(/500/);
   });
 });
