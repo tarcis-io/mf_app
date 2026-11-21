@@ -1,10 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  BATCH_FILE_FIELDS,
   BATCH_STATUSES,
+  createBatch,
+  DuplicateBatchNameError,
   listBatches,
   summarizeBatches,
   type Batch,
+  type BatchFiles,
 } from "./mf-service";
 
 /** A batch with sensible defaults; override any field per test. */
@@ -202,5 +206,149 @@ describe("summarizeBatches", () => {
     }
     // The total reflects the full list, collisions included.
     expect(summary.total).toBe(4);
+  });
+});
+
+/**
+ * Build the five required files, each with a deliberately *wrong* (user-chosen)
+ * filename, so tests can prove `createBatch` ignores these and renames every
+ * part to the service's expected filename.
+ */
+function makeFiles(): BatchFiles {
+  const files = {} as BatchFiles;
+  for (const { key } of BATCH_FILE_FIELDS) {
+    files[key] = new File(["data"], `user-picked-${key}.xyz`, {
+      type: "text/plain",
+    });
+  }
+  return files;
+}
+
+describe("createBatch", () => {
+  beforeEach(() => {
+    vi.stubEnv("MF_SERVICE_URL", "https://mf-service.massflow.ai");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it("POSTs multipart to {MF_SERVICE_URL}/batches with the X-User-Id header", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(JSON.stringify(makeBatch({ status: "creating" })), {
+          status: 201,
+        }),
+      );
+
+    await createBatch("google-sub-123", "Spring run", makeFiles());
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://mf-service.massflow.ai/batches");
+    expect(init?.method).toBe("POST");
+    expect(new Headers(init?.headers).get("X-User-Id")).toBe("google-sub-123");
+    expect(init?.body).toBeInstanceOf(FormData);
+    // Content-Type must NOT be set by hand — the runtime derives the multipart
+    // boundary from the FormData body. A manual value would break the upload.
+    expect(new Headers(init?.headers).get("Content-Type")).toBeNull();
+  });
+
+  it("sends the name and all five files under their mf_service field names", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(JSON.stringify(makeBatch()), { status: 201 }));
+
+    await createBatch("user-123", "Spring run", makeFiles());
+
+    const body = fetchMock.mock.calls[0][1]?.body as FormData;
+    expect(body.get("name")).toBe("Spring run");
+    for (const { field } of BATCH_FILE_FIELDS) {
+      expect(body.get(field), `field ${field}`).toBeInstanceOf(File);
+    }
+    // Exactly name + 5 files, nothing stray.
+    expect([...body.keys()].sort()).toEqual(
+      ["name", ...BATCH_FILE_FIELDS.map((f) => f.field)].sort(),
+    );
+  });
+
+  it("RENAMES each file to the service's expected filename (ignores the user's filename)", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(JSON.stringify(makeBatch()), { status: 201 }));
+
+    await createBatch("user-123", "Spring run", makeFiles());
+
+    const body = fetchMock.mock.calls[0][1]?.body as FormData;
+    // This is the core requirement: every part carries the fixed filename the
+    // endpoint stores under, never the "user-picked-*.xyz" name from makeFiles.
+    for (const { field, filename } of BATCH_FILE_FIELDS) {
+      const part = body.get(field) as File;
+      expect(part.name, `field ${field}`).toBe(filename);
+      expect(part.name).not.toMatch(/user-picked/);
+    }
+    // Spot-check the specific expected names, including the GNPS .tsv and the
+    // "reformated" spelling, so a typo in the mapping is caught.
+    expect((body.get("mzmine_annotations") as File).name).toBe(
+      "mzmine_annotations.csv",
+    );
+    expect((body.get("gnps_merged_results") as File).name).toBe(
+      "gnps_merged_results.tsv",
+    );
+    expect((body.get("gnps_feature_table_reformated") as File).name).toBe(
+      "gnps_feature_table_reformated.csv",
+    );
+  });
+
+  it("returns the created batch on success", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify(makeBatch({ name: "Spring run", status: "creating" })),
+        { status: 201, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    const batch = await createBatch("user-123", "Spring run", makeFiles());
+
+    expect(batch.name).toBe("Spring run");
+    expect(batch.status).toBe("creating");
+  });
+
+  it("throws DuplicateBatchNameError on 409 (name taken)", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ detail: "name taken" }), { status: 409 }),
+    );
+
+    await expect(
+      createBatch("user-123", "Spring run", makeFiles()),
+    ).rejects.toBeInstanceOf(DuplicateBatchNameError);
+  });
+
+  it("throws a generic error on other non-2xx (e.g. 422 missing file)", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("unprocessable", {
+        status: 422,
+        statusText: "Unprocessable Entity",
+      }),
+    );
+
+    const err = await createBatch("user-123", "Spring run", makeFiles()).catch(
+      (e) => e,
+    );
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(DuplicateBatchNameError);
+    expect((err as Error).message).toMatch(/422/);
+  });
+
+  it("throws when MF_SERVICE_URL is unset (never attempts the request)", async () => {
+    vi.stubEnv("MF_SERVICE_URL", undefined as unknown as string);
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+
+    await expect(
+      createBatch("user-123", "Spring run", makeFiles()),
+    ).rejects.toThrow(/MF_SERVICE_URL/);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

@@ -125,6 +125,136 @@ export async function listBatches(userId: string): Promise<Batch[]> {
 }
 
 /**
+ * The five files a new batch requires, in the exact shape `POST /batches`
+ * expects (see the mf_service README). Each entry is one `multipart/form-data`
+ * part:
+ *   - `key`      — a stable identifier this app uses internally (form inputs,
+ *                  the `createBatch` argument, tests). Not sent to the service.
+ *   - `field`    — the multipart field name mf_service reads. Must match exactly.
+ *   - `filename` — the filename mf_service stores the part under. The batch's
+ *                  files are keyed by this name, so the upload MUST use it and
+ *                  NOT the user's original filename (which is arbitrary).
+ *   - `group`    — which tool the file comes from, for grouping in the UI.
+ *   - `accept`   — the expected extension, used as the file picker hint and for
+ *                  client-side validation.
+ *
+ * This is the single source of truth for the required-file contract: the new-
+ * batch dialog renders one input per entry, and `createBatch` builds the body
+ * from it, so the two can't drift from each other or from the service.
+ */
+export const BATCH_FILE_FIELDS = [
+  {
+    key: "mzmine_annotations",
+    field: "mzmine_annotations",
+    filename: "mzmine_annotations.csv",
+    group: "mzmine",
+    accept: ".csv",
+  },
+  {
+    key: "mzmine_full_feature_table",
+    field: "mzmine_full_feature_table",
+    filename: "mzmine_full_feature_table.csv",
+    group: "mzmine",
+    accept: ".csv",
+  },
+  {
+    key: "mzmine_metadata",
+    field: "mzmine_metadata",
+    filename: "mzmine_metadata.csv",
+    group: "mzmine",
+    accept: ".csv",
+  },
+  {
+    key: "gnps_feature_table_reformated",
+    field: "gnps_feature_table_reformated",
+    filename: "gnps_feature_table_reformated.csv",
+    group: "gnps",
+    accept: ".csv",
+  },
+  {
+    key: "gnps_merged_results",
+    field: "gnps_merged_results",
+    filename: "gnps_merged_results.tsv",
+    group: "gnps",
+    accept: ".tsv",
+  },
+] as const;
+
+/** The `key` of one required batch file (e.g. `"mzmine_annotations"`). */
+export type BatchFileKey = (typeof BATCH_FILE_FIELDS)[number]["key"];
+
+/** The uploaded file for each required slot, keyed by {@link BatchFileKey}. */
+export type BatchFiles = Record<BatchFileKey, File>;
+
+/**
+ * Thrown by {@link createBatch} when mf_service rejects the name as already
+ * taken (HTTP `409`). A distinct type so callers can surface a specific "name
+ * already exists" message on the name field rather than a generic failure,
+ * without string-matching the message. Names are unique per user.
+ */
+export class DuplicateBatchNameError extends Error {
+  constructor(name: string) {
+    super(`A batch named "${name}" already exists.`);
+    this.name = "DuplicateBatchNameError";
+  }
+}
+
+/**
+ * Create a batch and upload its five files via `POST {MF_SERVICE_URL}/batches`
+ * (`multipart/form-data`). Returns the created `Batch`, which starts at status
+ * `creating`; mf_service stores the files in a background task and advances it
+ * to `created` (poll `GET /batches/{id}` to observe).
+ *
+ * The caller's identity goes in the `X-User-Id` header (the Google `sub`; see
+ * `@/auth`), the same as `listBatches`. Every file is sent under its mf_service
+ * field name and, critically, RENAMED to the expected upload filename from
+ * {@link BATCH_FILE_FIELDS} — the user's original filenames are ignored, because
+ * the service keys stored files by these fixed names.
+ *
+ * Throws {@link DuplicateBatchNameError} on `409` (name taken), and a generic
+ * `Error` on any other non-2xx (e.g. `422` for a missing file). Capped at
+ * `REQUEST_TIMEOUT_MS` like the other calls.
+ */
+export async function createBatch(
+  userId: string,
+  name: string,
+  files: BatchFiles,
+): Promise<Batch> {
+  const form = new FormData();
+  form.set("name", name);
+  for (const { key, field, filename } of BATCH_FILE_FIELDS) {
+    // Third arg is the part's filename: send the service's expected name, not
+    // `files[key].name` (the user's arbitrary original filename).
+    form.append(field, files[key], filename);
+  }
+
+  const response = await fetch(`${baseUrl()}/batches`, {
+    method: "POST",
+    headers: {
+      "X-User-Id": userId,
+      Accept: "application/json",
+      // NOTE: do not set Content-Type — the runtime sets it to
+      // `multipart/form-data` with the correct boundary from the FormData body.
+    },
+    body: form,
+    cache: "no-store",
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+
+  if (response.status === 409) {
+    throw new DuplicateBatchNameError(name);
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      `mf_service POST /batches failed: ${response.status} ${response.statusText}`,
+    );
+  }
+
+  return (await response.json()) as Batch;
+}
+
+/**
  * Reduce a list of batches to a total and a per-status count. Every
  * `BatchStatus` is present in `counts` (zero when none), so callers can render
  * a stable set of rows without missing-key checks. An unexpected status value
