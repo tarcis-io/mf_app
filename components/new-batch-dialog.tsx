@@ -66,9 +66,10 @@ export default function NewBatchDialog() {
       </button>
 
       <Dialog open={open} onClose={close} title="New batch">
-        {/* Keyed on `open` so the form remounts fresh each time it's opened,
-            clearing the name and the (un-clearable) file inputs. */}
-        {open ? <NewBatchForm key="open" onDone={close} /> : null}
+        {/* Mounted only while open, so the form (its name + the un-clearable
+            file inputs) is created fresh on each open and discarded on close —
+            no stale values carry over between opens. */}
+        {open ? <NewBatchForm onDone={close} /> : null}
       </Dialog>
     </>
   );
@@ -133,7 +134,15 @@ function NewBatchForm({ onDone }: { onDone: () => void }) {
   );
 
   return (
-    <form ref={formRef} onSubmit={onSubmit} className="flex min-h-0 flex-col">
+    <form
+      ref={formRef}
+      onSubmit={onSubmit}
+      // The banner is a form-level error (a duplicate name, a missing file, or a
+      // network failure), so associate it with the form rather than any single
+      // field. It also carries role="alert", which announces it on appearance.
+      aria-describedby={error ? errorId : undefined}
+      className="flex min-h-0 flex-col"
+    >
       <div className="flex flex-col gap-5 overflow-y-auto px-6 py-5">
         {error ? (
           <p

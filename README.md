@@ -48,10 +48,12 @@ database.
 `.env.local` is git-ignored; only `.env.example` (with empty placeholders) is
 committed.
 
-These three are required in every environment and the app **fails fast at
-startup** if any is missing (see `env.ts`). In production (e.g. Cloud Run) you
-must also set `AUTH_URL`, `AUTH_TRUST_HOST=true`, and `MF_SERVICE_URL` (the
-`mf_service` base URL — see [Backend](#backend)) — see
+`AUTH_SECRET` is required in every environment; `AUTH_GOOGLE_ID` and
+`AUTH_GOOGLE_SECRET` are required too **unless** the dev-only login is enabled
+(see [Local dev without Google](#local-dev-without-google) below). The app
+**fails fast at startup** if a required variable is missing (see `env.ts`). In
+production (e.g. Cloud Run) you must also set `AUTH_URL`, `AUTH_TRUST_HOST=true`,
+and `MF_SERVICE_URL` (the `mf_service` base URL — see [Backend](#backend)) — see
 [Deployment](#deployment) and [`DEPLOYMENT.md`](./DEPLOYMENT.md).
 
 ### Local dev without Google

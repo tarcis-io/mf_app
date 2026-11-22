@@ -2,14 +2,29 @@ import { describe, expect, it, vi } from "vitest";
 
 // Importing `@/auth` executes `NextAuth({...})` at module load, which spins up
 // the full Auth.js runtime (and expects real OAuth env vars). We only want to
-// test the pure `authorized` callback, so stub `next-auth` and the Google
-// provider: the real `authorized` export still runs, but `NextAuth()` becomes
-// a harmless no-op returning empty handlers.
-vi.mock("next-auth", () => ({
-  default: () => ({ handlers: {}, signIn: vi.fn(), signOut: vi.fn(), auth: vi.fn() }),
+// test the pure callbacks and the config object we hand to `NextAuth`, so stub
+// `next-auth` and the providers: the real `authorized`/`jwt`/`session` exports
+// still run, and `NextAuth()` becomes a no-op that *captures* the config it was
+// called with (see `nextAuthConfig`) and returns empty handlers.
+//
+// The providers are tagged (not bare `{}`) so a test can tell which ones ended
+// up in the `providers` array — that's what distinguishes the Google-only path
+// from the dev-login path.
+const { nextAuthConfig } = vi.hoisted(() => ({
+  nextAuthConfig: { current: undefined as unknown },
 }));
-vi.mock("next-auth/providers/google", () => ({ default: () => ({}) }));
-vi.mock("next-auth/providers/credentials", () => ({ default: () => ({}) }));
+vi.mock("next-auth", () => ({
+  default: (config: unknown) => {
+    nextAuthConfig.current = config;
+    return { handlers: {}, signIn: vi.fn(), signOut: vi.fn(), auth: vi.fn() };
+  },
+}));
+vi.mock("next-auth/providers/google", () => ({
+  default: () => ({ id: "google" }),
+}));
+vi.mock("next-auth/providers/credentials", () => ({
+  default: (options: { id?: string }) => ({ id: options?.id ?? "credentials" }),
+}));
 // Importing `@/auth` runs `validateEnv()` at module load, which would throw
 // without real secrets in the environment; it also reads `isDevLoginEnabled()`
 // to decide whether to register the dev provider. Stub both — `env.ts` has its
@@ -129,5 +144,60 @@ describe("jwt callback", () => {
     const result = jwt(makeJwtParams(undefined));
 
     expect((result as { sub?: string }).sub).toBeUndefined();
+  });
+});
+
+/**
+ * The `providers` array is the one piece of real branching in the config object
+ * handed to `NextAuth`: the dev-only Credentials provider is appended *only*
+ * when `isDevLoginEnabled()` is true. The callback tests above mock `NextAuth`
+ * to a no-op, so this branch would otherwise go unexercised. We read the config
+ * captured by the `NextAuth` stub (`nextAuthConfig`) and assert the provider ids
+ * it carries.
+ */
+describe("NextAuth providers config", () => {
+  /** Provider ids from a captured config (providers are tagged in the mocks). */
+  function providerIds(config: unknown): string[] {
+    const providers = (config as { providers: { id: string }[] }).providers;
+    return providers.map((p) => p.id);
+  }
+
+  it("registers Google only when dev login is disabled", async () => {
+    // Re-import `./auth` fresh under the default `@/env` mock
+    // (`isDevLoginEnabled: () => false`) so this doesn't depend on test order or
+    // on config another test may have captured. This is the production-shaped,
+    // Google-only path.
+    vi.resetModules();
+    await import("./auth");
+
+    expect(providerIds(nextAuthConfig.current)).toEqual(["google"]);
+  });
+
+  it("appends the dev-login Credentials provider when dev login is enabled", async () => {
+    // Re-evaluate `@/auth` with dev login ON. Reset the module registry (so the
+    // import side-effect `NextAuth({...})` runs again) and, before re-importing,
+    // override just `@/env` for the next import via `vi.doMock` — it isn't
+    // hoisted, so it applies only to imports made after this point. `validateEnv`
+    // stays a no-op; only the gate flips.
+    vi.resetModules();
+    vi.doMock("@/env", () => ({
+      validateEnv: vi.fn(),
+      isDevLoginEnabled: () => true,
+    }));
+
+    try {
+      await import("./auth");
+
+      // Google stays first; the dev-login provider is appended after it.
+      expect(providerIds(nextAuthConfig.current)).toEqual([
+        "google",
+        "dev-login",
+      ]);
+    } finally {
+      // Undo the per-test override and registry reset so nothing leaks into
+      // other test files (the top-of-file `vi.mock` for `@/env` is restored).
+      vi.doUnmock("@/env");
+      vi.resetModules();
+    }
   });
 });

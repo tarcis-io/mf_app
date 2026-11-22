@@ -120,6 +120,10 @@ function EditBatchForm({
             required
             autoFocus
             value={name}
+            // Associate the field with the error banner when one is shown, so
+            // assistive tech ties the message to this input (the banner also has
+            // role="alert", which announces it on appearance).
+            aria-describedby={error ? errorId : undefined}
             onChange={(event) => {
               setError(null);
               setName(event.target.value);

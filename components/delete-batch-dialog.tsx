@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useId, useState, useTransition } from "react";
+import { useCallback, useState, useTransition } from "react";
 
 import { deleteBatchAction } from "@/app/batches/actions";
 import Dialog from "@/components/dialog";
@@ -37,7 +37,6 @@ export default function DeleteBatchDialog({
 }: DeleteBatchDialogProps) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const errorId = useId();
 
   const onConfirm = useCallback(() => {
     if (!batch) return;
@@ -62,7 +61,6 @@ export default function DeleteBatchDialog({
       <div className="flex flex-col gap-5 px-6 py-5">
         {error ? (
           <p
-            id={errorId}
             role="alert"
             className="rounded-lg border border-[#ef4444]/30 bg-[#ef4444]/[.08] px-3 py-2 text-sm text-[#b91c1c]"
           >
