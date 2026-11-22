@@ -19,8 +19,13 @@ vi.mock("next-auth", () => ({
     return { handlers: {}, signIn: vi.fn(), signOut: vi.fn(), auth: vi.fn() };
   },
 }));
+// `auth.ts` uses the Google provider as a bare reference (`providers: [Google]`),
+// so its default export must itself be the tagged provider object — not a
+// function returning one. The Credentials provider, by contrast, is *called*
+// (`Credentials({ id: "dev-login", … })`), so that default stays a function and
+// echoes back the id it's given.
 vi.mock("next-auth/providers/google", () => ({
-  default: () => ({ id: "google" }),
+  default: { id: "google" },
 }));
 vi.mock("next-auth/providers/credentials", () => ({
   default: (options: { id?: string }) => ({ id: options?.id ?? "credentials" }),
