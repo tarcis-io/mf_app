@@ -342,6 +342,61 @@ export async function deleteBatch(userId: string, id: string): Promise<void> {
 }
 
 /**
+ * The service identity returned by `GET /version` (mf_service's version
+ * payload): the service's own name/description/version, plus the version of the
+ * `mf_engine` it's running against. Shown on the About page. Only the fields the
+ * app uses are typed.
+ */
+export interface ServiceInfo {
+  name: string;
+  description: string;
+  version: string;
+  engine_version: string;
+}
+
+/**
+ * Fetch mf_service's identity and versions via `GET {MF_SERVICE_URL}/version`.
+ *
+ * Unlike the batch endpoints this is not per-user, so it sends no `X-User-Id`.
+ * Always fetched fresh (`cache: "no-store"`) and capped at `REQUEST_TIMEOUT_MS`,
+ * like the other calls. Throws on a missing base URL, a timeout, any non-2xx
+ * response, or a body missing the expected `version`/`engine_version` strings;
+ * the caller (the About page) catches that and renders an "unavailable" state
+ * rather than failing the page.
+ */
+export async function getServiceInfo(): Promise<ServiceInfo> {
+  const response = await fetch(`${baseUrl()}/version`, {
+    headers: { Accept: "application/json" },
+    cache: "no-store",
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `mf_service GET /version failed: ${response.status} ${response.statusText}`,
+    );
+  }
+
+  // Guard the shape: a 2xx that isn't the expected object (e.g. a misconfigured
+  // proxy returning HTML, or an older service without these fields) would
+  // otherwise surface the wrong strings on the About card. Validate the two
+  // fields the UI actually renders as versions.
+  const body: unknown = await response.json();
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    typeof (body as Record<string, unknown>).version !== "string" ||
+    typeof (body as Record<string, unknown>).engine_version !== "string"
+  ) {
+    throw new Error(
+      "mf_service GET /version returned an unexpected body (missing version/engine_version)",
+    );
+  }
+
+  return body as ServiceInfo;
+}
+
+/**
  * Reduce a list of batches to a total and a per-status count. Every
  * `BatchStatus` is present in `counts` (zero when none), so callers can render
  * a stable set of rows without missing-key checks. An unexpected status value

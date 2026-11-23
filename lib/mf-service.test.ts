@@ -7,6 +7,7 @@ import {
   createBatch,
   deleteBatch,
   DuplicateBatchNameError,
+  getServiceInfo,
   listBatches,
   renameBatch,
   summarizeBatches,
@@ -137,6 +138,95 @@ describe("listBatches", () => {
 
     await expect(listBatches("user-123")).rejects.toThrow(/MF_SERVICE_URL/);
     // We never attempt the request without a base URL.
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("getServiceInfo", () => {
+  const INFO = {
+    name: "mf_service",
+    description: "MassFlow service: a FastAPI service exposing the MassFlow engine over HTTP.",
+    version: "0.1.0",
+    engine_version: "0.1.0",
+  };
+
+  beforeEach(() => {
+    vi.stubEnv("MF_SERVICE_URL", "https://mf-service.massflow.ai");
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it("GETs {MF_SERVICE_URL}/version, uncached, with no X-User-Id (not per-user)", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(JSON.stringify(INFO), { status: 200 }));
+
+    await getServiceInfo();
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://mf-service.massflow.ai/version");
+    expect(init?.cache).toBe("no-store");
+    // /version is service identity, not per-user — no X-User-Id header.
+    expect(new Headers(init?.headers).get("X-User-Id")).toBeNull();
+    // Capped by an abort signal like the other calls.
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("returns the parsed service info (version + engine_version)", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(INFO), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const info = await getServiceInfo();
+
+    expect(info.version).toBe("0.1.0");
+    expect(info.engine_version).toBe("0.1.0");
+    expect(info.name).toBe("mf_service");
+  });
+
+  it("throws on a non-2xx response (so the caller can show 'unavailable')", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("nope", { status: 503, statusText: "Service Unavailable" }),
+    );
+
+    await expect(getServiceInfo()).rejects.toThrow(/503/);
+  });
+
+  it("throws when the body is missing the version fields", async () => {
+    // A 2xx whose body lacks version/engine_version (e.g. an older service or a
+    // proxy error page) must not surface the wrong strings on the About card.
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ name: "mf_service" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await expect(getServiceInfo()).rejects.toThrow(/version/);
+  });
+
+  it("throws when the body isn't valid JSON (e.g. an HTML error page)", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("<!doctype html><title>502</title>", {
+        status: 200,
+        headers: { "Content-Type": "text/html" },
+      }),
+    );
+
+    await expect(getServiceInfo()).rejects.toThrow();
+  });
+
+  it("throws when MF_SERVICE_URL is unset (never attempts the request)", async () => {
+    vi.stubEnv("MF_SERVICE_URL", undefined as unknown as string);
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+
+    await expect(getServiceInfo()).rejects.toThrow(/MF_SERVICE_URL/);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

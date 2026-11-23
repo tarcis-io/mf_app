@@ -3,6 +3,7 @@ import Image from "next/image";
 import { signInAction, signInDevAction } from "@/app/actions";
 import NeuralNetworkBackground from "@/components/neural-network-background";
 import { isDevLoginEnabled } from "@/env";
+import { APP_NAME, DEVELOPER_EMAIL } from "@/lib/app-info";
 
 // Resolved once when the module is evaluated (build/prerender time), so the
 // copyright line stays current without pulling runtime data into this
@@ -55,14 +56,16 @@ export default function Login() {
         ) : null}
       </div>
       <footer className="absolute inset-x-0 bottom-0 flex flex-col items-center gap-1 py-6 text-sm text-foreground/40">
-        <p>&copy; {COPYRIGHT_YEAR} MassFlow AI</p>
+        <p>
+          &copy; {COPYRIGHT_YEAR} {APP_NAME}
+        </p>
         <p>
           Developed by{" "}
           <a
-            href="mailto:t@rcis.io"
+            href={`mailto:${DEVELOPER_EMAIL}`}
             className="font-medium text-foreground/60 underline-offset-4 transition-colors hover:text-primary hover:underline"
           >
-            t@rcis.io
+            {DEVELOPER_EMAIL}
           </a>
         </p>
       </footer>

@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
+
+import { APP_DESCRIPTION, APP_NAME } from "@/lib/app-info";
 import "./globals.css";
 
 const inter = Inter({
@@ -8,9 +10,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "MassFlow AI",
-  description:
-    "MassFlow AI — the Next.js frontend for MassFlow, the metabolomics batch-processing platform.",
+  title: APP_NAME,
+  description: APP_DESCRIPTION,
 };
 
 export const viewport: Viewport = {
