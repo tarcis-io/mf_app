@@ -12,14 +12,19 @@ FastAPI boundary over [mf_engine](https://github.com/tarcis-io/mf_engine)
 
 ```bash
 pnpm install
-pnpm setup    # scaffold .env.local with a generated AUTH_SECRET
+pnpm setup    # scaffold a ready-to-run .env.local
+pnpm dev      # http://localhost:3000
 ```
 
-`pnpm setup` copies `.env.example` to `.env.local` and fills in a freshly
-generated `AUTH_SECRET`. It never overwrites an existing `.env.local`. You still
-need to add the Google OAuth credentials (see
-[Google OAuth setup](#google-oauth-setup)) — or set `AUTH_DEV_LOGIN=true` to run
-without Google (see [Local dev without Google](#local-dev-without-google)).
+`pnpm setup` writes a `.env.local` you can run immediately: it generates an
+`AUTH_SECRET` and enables the dev-only login (`AUTH_DEV_LOGIN=true`), so
+`pnpm dev` boots with no Google setup — the login page shows a "Continue as dev
+user" button. It never overwrites an existing `.env.local`.
+
+To use real Google sign-in instead, add the OAuth credentials (see
+[Google OAuth setup](#google-oauth-setup)) and comment `AUTH_DEV_LOGIN` back out.
+Dev-login is ignored in production regardless (see
+[Local dev without Google](#local-dev-without-google)).
 
 ## Authentication
 
@@ -41,10 +46,11 @@ database.
    ```
 
 3. Create `.env.local` and fill in the values. `pnpm setup` (from
-   [Install](#install)) scaffolds it with a generated `AUTH_SECRET`; or copy the
-   template by hand (`cp .env.example .env.local`) and generate the secret with
-   `npx auth secret`. Either way, paste the two Google values from the step
-   above:
+   [Install](#install)) scaffolds it with a generated `AUTH_SECRET` — though it
+   defaults to dev-login, so for real Google sign-in comment `AUTH_DEV_LOGIN`
+   back out. Or copy the template by hand (`cp .env.example .env.local`) and
+   generate the secret with `npx auth secret`. Either way, paste the two Google
+   values from the step above:
 
    | Variable             | Description                                                                   |
    | -------------------- | ----------------------------------------------------------------------------- |
@@ -168,7 +174,7 @@ mf_app/                                    # repository root
 ├── DEPLOYMENT.md                          # Cloud Run deployment guide (env contract, OAuth)
 ├── README.md
 ├── scripts/
-│   └── generate-env.mjs                   # `pnpm setup`: scaffold .env.local with a generated AUTH_SECRET
+│   └── generate-env.mjs                   # `pnpm setup`: scaffold a ready-to-run .env.local (AUTH_SECRET + dev-login)
 ├── types/
 │   └── next-auth.d.ts                     # Auth.js type augmentation (session.user.id)
 ├── lib/
