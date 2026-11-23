@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 // Settings composes the shared LoggedInTemplate (an async Server Component that
@@ -22,6 +22,13 @@ vi.mock("@/components/templates/logged-in-template", () => ({
   },
 }));
 
+// ThemeRadio is a client component backed by localStorage; stub it so this test
+// focuses on the page's own structure (the Theme card). Its behavior is covered
+// in `components/theme-radio.test.tsx`.
+vi.mock("@/components/theme-radio", () => ({
+  default: () => <div data-testid="theme-radio" />,
+}));
+
 import Settings from "./page";
 
 describe("Settings page", () => {
@@ -41,5 +48,18 @@ describe("Settings page", () => {
     expect(
       screen.getByRole("heading", { level: 1, name: "Settings" }),
     ).toBeInTheDocument();
+  });
+
+  it("renders a Theme card (labelled region with an icon) containing the theme selector", () => {
+    render(<Settings />);
+
+    const card = screen.getByRole("region", { name: "Theme" });
+    // Title is a level-2 heading with a decorative icon beside it.
+    const heading = within(card).getByRole("heading", { level: 2, name: "Theme" });
+    const icon = heading.querySelector("svg");
+    expect(icon).not.toBeNull();
+    expect(icon).toHaveAttribute("aria-hidden", "true");
+    // The selector itself lives inside the card.
+    expect(within(card).getByTestId("theme-radio")).toBeInTheDocument();
   });
 });

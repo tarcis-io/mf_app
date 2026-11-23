@@ -9,7 +9,7 @@ import {
   DEVELOPER_EMAIL,
   REPOSITORY_URLS,
 } from "@/lib/app-info";
-import { getServiceInfo } from "@/lib/mf-service";
+import { getServiceInfo, type ServiceInfo } from "@/lib/mf-service";
 
 export default function About() {
   return (
@@ -67,18 +67,26 @@ export default function About() {
  * two cards and the Application card above still renders (mirrors `BatchesCard`).
  */
 async function ServiceCards() {
-  let serviceVersion: ReactNode = <Unavailable />;
-  let engineVersion: ReactNode = <Unavailable />;
-
+  // Only the fetch goes in the try/catch — JSX is constructed afterwards. A
+  // try/catch can't catch a child component's render-time errors (see the
+  // react-hooks/error-boundaries lint rule), and the fetch is the only thing
+  // that throws here. On failure `info` stays null → both cards show
+  // "unavailable", so a backend hiccup degrades just these two cards.
+  let info: ServiceInfo | null = null;
   try {
-    const info = await getServiceInfo();
-    serviceVersion = <Version value={info.version} />;
-    engineVersion = <Version value={info.engine_version} />;
+    info = await getServiceInfo();
   } catch (error) {
-    // Log server-side for diagnosability (status / DNS / missing URL), but leave
-    // the quiet "unavailable" fallbacks set above for the user.
+    // Log server-side for diagnosability (status / DNS / missing URL); the null
+    // `info` drives the quiet "unavailable" fallback below.
     console.error("About: failed to load mf_service version", error);
   }
+
+  const serviceVersion = info ? <Version value={info.version} /> : <Unavailable />;
+  const engineVersion = info ? (
+    <Version value={info.engine_version} />
+  ) : (
+    <Unavailable />
+  );
 
   return (
     <>

@@ -12,7 +12,14 @@ FastAPI boundary over [mf_engine](https://github.com/tarcis-io/mf_engine)
 
 ```bash
 pnpm install
+pnpm setup    # scaffold .env.local with a generated AUTH_SECRET
 ```
+
+`pnpm setup` copies `.env.example` to `.env.local` and fills in a freshly
+generated `AUTH_SECRET`. It never overwrites an existing `.env.local`. You still
+need to add the Google OAuth credentials (see
+[Google OAuth setup](#google-oauth-setup)) — or set `AUTH_DEV_LOGIN=true` to run
+without Google (see [Local dev without Google](#local-dev-without-google)).
 
 ## Authentication
 
@@ -33,17 +40,17 @@ database.
    http://localhost:3000/api/auth/callback/google
    ```
 
-3. Copy `.env.example` to `.env.local` and fill in the values:
+3. Create `.env.local` and fill in the values. `pnpm setup` (from
+   [Install](#install)) scaffolds it with a generated `AUTH_SECRET`; or copy the
+   template by hand (`cp .env.example .env.local`) and generate the secret with
+   `npx auth secret`. Either way, paste the two Google values from the step
+   above:
 
-   ```bash
-   cp .env.example .env.local
-   ```
-
-   | Variable             | Description                                        |
-   | -------------------- | -------------------------------------------------- |
-   | `AUTH_SECRET`        | Cookie/JWT encryption secret (`npx auth secret`).  |
-   | `AUTH_GOOGLE_ID`     | OAuth client ID from the step above.               |
-   | `AUTH_GOOGLE_SECRET` | OAuth client secret from the step above.           |
+   | Variable             | Description                                                                   |
+   | -------------------- | ----------------------------------------------------------------------------- |
+   | `AUTH_SECRET`        | Cookie/JWT encryption secret (`pnpm setup` fills this, or `npx auth secret`). |
+   | `AUTH_GOOGLE_ID`     | OAuth client ID from the step above.                                          |
+   | `AUTH_GOOGLE_SECRET` | OAuth client secret from the step above.                                      |
 
 `.env.local` is git-ignored; only `.env.example` (with empty placeholders) is
 committed.
@@ -160,11 +167,16 @@ mf_app/                                    # repository root
 ├── .env.example                           # template for required env vars
 ├── DEPLOYMENT.md                          # Cloud Run deployment guide (env contract, OAuth)
 ├── README.md
+├── scripts/
+│   └── generate-env.mjs                   # `pnpm setup`: scaffold .env.local with a generated AUTH_SECRET
 ├── types/
 │   └── next-auth.d.ts                     # Auth.js type augmentation (session.user.id)
 ├── lib/
-│   ├── mf-service.ts                      # server-side mf_service client (batches) + summary helper
-│   └── mf-service.test.ts
+│   ├── mf-service.ts                      # server-side mf_service client (batches, /version) + summary helper
+│   ├── mf-service.test.ts
+│   ├── app-info.ts                        # app identity single source of truth (name/version/URL/repos)
+│   ├── theme.ts                           # theme preference: storage key, init script, apply/read helpers
+│   └── theme.test.ts
 ├── public/
 │   └── logo.svg                           # wordmark logo (login page + drawer)
 ├── components/
@@ -176,6 +188,8 @@ mf_app/                                    # repository root
 │   ├── batches-card.test.tsx
 │   ├── user-label.tsx                     # signed-in user's name/email (header)
 │   ├── user-label.test.tsx
+│   ├── theme-radio.tsx                    # Settings theme selector (System/Light/Dark)
+│   ├── theme-radio.test.tsx
 │   └── templates/
 │       ├── logged-in-template.tsx         # server shell: reads session, composes AppShell
 │       ├── logged-in-template.test.tsx

@@ -4,6 +4,7 @@
   "description": "MassFlow AI — the Next.js frontend for MassFlow, the metabolomics batch-processing platform.",
   "private": true,
   "scripts": {
+    "setup": "node scripts/generate-env.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
