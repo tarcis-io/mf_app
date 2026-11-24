@@ -178,6 +178,21 @@ describe("listBatches", () => {
     await expect(listBatches("user-123")).rejects.toThrow(/non-array/);
   });
 
+  it("throws when the array contains a non-batch element", async () => {
+    // A 2xx JSON array whose elements aren't batch objects (e.g. an error
+    // envelope list, or a partial payload missing id/status) must not flow
+    // through to summarizeBatches/the UI as if it were batches. Element shape is
+    // validated, not just that the body is an array.
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify([makeBatch(), { detail: "nope" }]), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await expect(listBatches("user-123")).rejects.toThrow(/non-batch element/);
+  });
+
   it("throws when the body isn't valid JSON (e.g. an HTML error page)", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response("<!doctype html><title>502</title>", {
@@ -320,7 +335,7 @@ describe("summarizeBatches", () => {
     }
   });
 
-  it("ignores an unexpected status value but still counts it in the total", () => {
+  it("ignores an unexpected status value entirely (not bucketed, not in the total)", () => {
     const summary = summarizeBatches([
       makeBatch(),
       makeBatch({ status: "bogus" as Batch["status"] }),
@@ -329,8 +344,10 @@ describe("summarizeBatches", () => {
     // The bad value isn't added to any known bucket...
     const bucketed = Object.values(summary.counts).reduce((a, b) => a + b, 0);
     expect(bucketed).toBe(1);
-    // ...but the total still reflects the full list length.
-    expect(summary.total).toBe(2);
+    // ...and the total excludes it too, so total == sum of the rows (the
+    // headline number always reconciles with the per-status breakdown).
+    expect(summary.total).toBe(1);
+    expect(summary.total).toBe(bucketed);
   });
 
   it("ignores a status that collides with an Object.prototype key", () => {
@@ -357,8 +374,10 @@ describe("summarizeBatches", () => {
     for (const status of BATCH_STATUSES) {
       expect(typeof summary.counts[status]).toBe("number");
     }
-    // The total reflects the full list, collisions included.
-    expect(summary.total).toBe(4);
+    // Only the one real status counts toward the total; the three prototype-key
+    // collisions are ignored like any other unknown status, so total == 1 (and
+    // reconciles with the single bucketed row).
+    expect(summary.total).toBe(1);
   });
 });
 
@@ -469,6 +488,22 @@ describe("createBatch", () => {
     expect(batch.status).toBe("creating");
   });
 
+  it("throws when a 2xx body isn't a batch object (shape guard)", async () => {
+    // A 201 whose body isn't a batch (e.g. HTML from a misconfigured proxy, or
+    // an unexpected envelope) must surface as a clear error, not a silent cast —
+    // the same guard the list/version calls apply (see parseBatchResponse).
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ detail: "created-ish but not a batch" }), {
+        status: 201,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await expect(
+      createBatch("user-123", "Spring run", makeFiles()),
+    ).rejects.toThrow(/unexpected body/);
+  });
+
   it("throws DuplicateBatchNameError on 409 (name taken)", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ detail: "name taken" }), { status: 409 }),
@@ -573,6 +608,21 @@ describe("renameBatch", () => {
 
     const batch = await renameBatch("user-123", "batch-1", "Renamed");
     expect(batch.name).toBe("Renamed");
+  });
+
+  it("throws when a 2xx body isn't a batch object (shape guard)", async () => {
+    // Same shape guard as createBatch: a 200 that isn't a batch object must
+    // throw a clear error rather than be cast through (see parseBatchResponse).
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("<!doctype html><title>oops</title>", {
+        status: 200,
+        headers: { "Content-Type": "text/html" },
+      }),
+    );
+
+    await expect(
+      renameBatch("user-123", "batch-1", "Renamed"),
+    ).rejects.toThrow();
   });
 
   it("throws DuplicateBatchNameError on 409", async () => {
@@ -907,5 +957,54 @@ describe("service-to-service auth (Google ID token via metadata server)", () => 
     await listBatches("user-123");
 
     expect(metadataCalls(fetchMock)).toHaveLength(2);
+  });
+
+  it("collapses concurrent cache misses into a single metadata fetch (de-dup)", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const { listBatches } = await freshModule();
+
+    // Hold the metadata response open so both calls are in flight at once,
+    // before either can populate the cache. Without the in-flight de-dup
+    // (`inFlight` map) each miss would fire its own metadata request; with it,
+    // the second call awaits the first's pending request. Keeping the metadata
+    // fetch pending is what makes a cache-only de-dup insufficient here.
+    let releaseToken!: () => void;
+    const tokenGate = new Promise<void>((r) => {
+      releaseToken = r;
+    });
+    const token = makeJwt();
+
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (input: unknown) => {
+        if (isMetadataCall(input)) {
+          await tokenGate; // stay pending until released
+          return new Response(token, { status: 200 });
+        }
+        return new Response("[]", { status: 200 });
+      });
+
+    // Fire two calls concurrently while the metadata request is still pending.
+    const pending = Promise.all([
+      listBatches("user-123"),
+      listBatches("user-123"),
+    ]);
+    // Let microtasks run so both reach the (shared) in-flight metadata request.
+    await Promise.resolve();
+    releaseToken();
+    await pending;
+
+    // Exactly one metadata fetch served both concurrent callers.
+    expect(metadataCalls(fetchMock)).toHaveLength(1);
+    // Both mf_service calls still happened, each with the Bearer token.
+    const serviceCalls = fetchMock.mock.calls.filter(
+      ([input]) => !isMetadataCall(input),
+    );
+    expect(serviceCalls).toHaveLength(2);
+    for (const call of serviceCalls) {
+      expect(new Headers(call[1]?.headers).get("Authorization")).toBe(
+        `Bearer ${token}`,
+      );
+    }
   });
 });

@@ -80,6 +80,15 @@ describe("NewBatchDialog", () => {
     ).toBeInTheDocument();
   });
 
+  it("focuses the Name field on open (parity with the edit dialog)", () => {
+    render(<NewBatchDialog />);
+
+    openDialog();
+
+    // The first field is autofocused so the user can start typing immediately.
+    expect(screen.getByLabelText("Name")).toHaveFocus();
+  });
+
   it("groups the files into an MZmine card (3) and a GNPS card (2)", () => {
     render(<NewBatchDialog />);
     openDialog();

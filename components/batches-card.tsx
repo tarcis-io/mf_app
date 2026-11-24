@@ -1,15 +1,10 @@
 import Link from "next/link";
 
-import { auth } from "@/auth";
 import Card from "@/components/card";
 import BatchesIcon from "@/components/batches-icon";
 import { STATUS_COLORS, STATUS_LABELS } from "@/components/batch-status";
-import {
-  BATCH_STATUSES,
-  listBatches,
-  summarizeBatches,
-  type BatchSummary,
-} from "@/lib/mf-service";
+import { BATCH_STATUSES, summarizeBatches } from "@/lib/mf-service";
+import { loadUserBatches } from "@/lib/user-batches";
 
 /**
  * Home-page card summarising the signed-in user's batches: the total, then a
@@ -50,31 +45,15 @@ export default async function BatchesCard() {
   );
 }
 
-/** Fetch + render the body; isolated so the fetch is the only thing that can throw. */
+/** Fetch + render the body. Session read, fetch, and error handling live in the
+ *  shared `loadUserBatches` helper; this just shapes the result into a summary. */
 async function BatchesContent() {
-  const session = await auth();
-  const userId = session?.user?.id;
-
-  if (!userId) {
+  const result = await loadUserBatches("BatchesCard");
+  if ("error" in result) {
     return <CardError />;
   }
 
-  // Do the throwing work (the fetch + reduce) outside the JSX return below.
-  // Constructing JSX inside a try/catch is flagged by react-hooks/error-
-  // boundaries — a try/catch can't catch a component's render-time errors, only
-  // the synchronous work here. That's all we need caught: listBatches is the
-  // sole thing that throws.
-  let summary: BatchSummary;
-  try {
-    summary = summarizeBatches(await listBatches(userId));
-  } catch (error) {
-    // listBatches throws on a missing MF_SERVICE_URL or a non-2xx response.
-    // Keep the failure contained to this card, but log it server-side so a
-    // backend outage is diagnosable (status code / DNS / missing URL) rather
-    // than silently rendering the error state with nothing in the logs.
-    console.error("BatchesCard: failed to load batches", error);
-    return <CardError />;
-  }
+  const summary = summarizeBatches(result.batches);
 
   return (
     <>

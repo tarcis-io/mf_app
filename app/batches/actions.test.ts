@@ -77,10 +77,13 @@ describe("createBatchAction", () => {
     }
   });
 
-  it("revalidates the batches page on success", async () => {
+  it("revalidates the batches page AND home on success", async () => {
     await createBatchAction(makeFormData());
 
+    // Both views read the batch list: /batches directly, and / via the home
+    // BatchesCard total — so both must be revalidated or the home count goes stale.
     expect(revalidatePath).toHaveBeenCalledWith("/batches");
+    expect(revalidatePath).toHaveBeenCalledWith("/");
   });
 
   it("trims the submitted name before sending", async () => {
@@ -161,9 +164,10 @@ describe("renameBatchAction", () => {
     expect(renameBatch.mock.calls[0]![2]).toBe("Renamed");
   });
 
-  it("revalidates the batches page on success", async () => {
+  it("revalidates the batches page AND home on success", async () => {
     await renameBatchAction("batch-1", nameForm("Renamed"));
     expect(revalidatePath).toHaveBeenCalledWith("/batches");
+    expect(revalidatePath).toHaveBeenCalledWith("/");
   });
 
   it("returns a duplicate result when the new name is taken", async () => {
@@ -217,6 +221,7 @@ describe("deleteBatchAction", () => {
     expect(result.ok).toBe(true);
     expect(deleteBatch).toHaveBeenCalledWith("google-sub-xyz", "batch-1");
     expect(revalidatePath).toHaveBeenCalledWith("/batches");
+    expect(revalidatePath).toHaveBeenCalledWith("/");
   });
 
   it("treats an already-gone batch (404) as success and still revalidates", async () => {
@@ -225,9 +230,10 @@ describe("deleteBatchAction", () => {
     const result = await deleteBatchAction("batch-1");
 
     // The user's goal was removal; a 404 means it's already gone — refresh so
-    // the stale row disappears.
+    // the stale row disappears (both the list and the home count).
     expect(result.ok).toBe(true);
     expect(revalidatePath).toHaveBeenCalledWith("/batches");
+    expect(revalidatePath).toHaveBeenCalledWith("/");
   });
 
   it("returns an error result on a non-404 failure (no revalidate)", async () => {

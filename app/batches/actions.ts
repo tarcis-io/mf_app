@@ -34,6 +34,18 @@ export interface BatchActionResult {
 }
 
 /**
+ * Revalidate every page whose render depends on the user's batch list, after a
+ * create / rename / delete. That's the `/batches` page itself *and* the home
+ * page (`/`), whose `BatchesCard` reads the same list for its total + per-status
+ * breakdown (see `components/batches-card.tsx`) — without revalidating `/`, the
+ * home count would go stale after a mutation made on `/batches`.
+ */
+function revalidateBatchViews(): void {
+  revalidatePath("/batches");
+  revalidatePath("/");
+}
+
+/**
  * Server Action behind the "New batch" dialog (see `components/new-batch-dialog`).
  * Colocated with the Batches page rather than in `app/actions.ts` (which is the
  * auth actions) so batch concerns stay together and discoverable.
@@ -90,8 +102,8 @@ export async function createBatchAction(
   }
 
   // The new batch (status `creating`) should appear at the top of the list, so
-  // revalidate the Batches page's cached render.
-  revalidatePath("/batches");
+  // revalidate the batch views (see `revalidateBatchViews`).
+  revalidateBatchViews();
   return { ok: true };
 }
 
@@ -144,7 +156,7 @@ export async function renameBatchAction(
     };
   }
 
-  revalidatePath("/batches");
+  revalidateBatchViews();
   return { ok: true };
 }
 
@@ -171,7 +183,7 @@ export async function deleteBatchAction(
     // A batch that's already gone is effectively success from the user's point
     // of view: the goal was to remove it. Refresh so the stale row disappears.
     if (error instanceof BatchNotFoundError) {
-      revalidatePath("/batches");
+      revalidateBatchViews();
       return { ok: true };
     }
     console.error("deleteBatchAction: failed to delete batch", error);
@@ -181,6 +193,6 @@ export async function deleteBatchAction(
     };
   }
 
-  revalidatePath("/batches");
+  revalidateBatchViews();
   return { ok: true };
 }

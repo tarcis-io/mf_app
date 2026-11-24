@@ -158,7 +158,7 @@ function NewBatchForm({ onDone }: { onDone: () => void }) {
           <p
             id={errorId}
             role="alert"
-            className="rounded-lg border border-[#ef4444]/30 bg-[#ef4444]/[.08] px-3 py-2 text-sm text-[#b91c1c]"
+            className="rounded-lg border border-danger/30 bg-danger/[.08] px-3 py-2 text-sm text-danger-text"
           >
             {error}
           </p>
@@ -236,13 +236,16 @@ function NameField({
         name="name"
         type="text"
         required
+        // Focus the first field on open, matching the edit dialog. The form is
+        // mounted fresh on each open (see NewBatchDialog), so this fires every time.
+        autoFocus
         aria-invalid={invalid || undefined}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder="e.g. Spring run 2026"
         className={`h-10 w-full rounded-lg border bg-background px-3 text-sm text-foreground outline-none transition-colors placeholder:text-foreground/40 focus-visible:ring-2 focus-visible:ring-primary ${
           invalid
-            ? "border-[#ef4444] focus-visible:border-[#ef4444]"
+            ? "border-danger focus-visible:border-danger"
             : "border-foreground/15 hover:border-foreground/25 focus-visible:border-foreground/25"
         }`}
       />
@@ -311,7 +314,7 @@ function FileField({
         className="block w-full cursor-pointer text-sm text-foreground/70 file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-foreground/[.06] file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground/80 hover:file:bg-foreground/[.1] focus-visible:outline-none"
       />
       {invalid ? (
-        <span id={hintId} className="text-xs text-[#b91c1c]">
+        <span id={hintId} className="text-xs text-danger-text">
           Expected a {accept} file.
         </span>
       ) : null}

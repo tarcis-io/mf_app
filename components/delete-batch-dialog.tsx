@@ -62,7 +62,7 @@ export default function DeleteBatchDialog({
         {error ? (
           <p
             role="alert"
-            className="rounded-lg border border-[#ef4444]/30 bg-[#ef4444]/[.08] px-3 py-2 text-sm text-[#b91c1c]"
+            className="rounded-lg border border-danger/30 bg-danger/[.08] px-3 py-2 text-sm text-danger-text"
           >
             {error}
           </p>
@@ -91,7 +91,7 @@ export default function DeleteBatchDialog({
           type="button"
           onClick={onConfirm}
           disabled={isPending}
-          className="inline-flex h-10 cursor-pointer items-center justify-center rounded-lg bg-[#dc2626] px-4 text-sm font-medium text-white outline-none transition-colors hover:bg-[#b91c1c] focus-visible:ring-2 focus-visible:ring-[#dc2626] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none"
+          className="inline-flex h-10 cursor-pointer items-center justify-center rounded-lg bg-danger-strong px-4 text-sm font-medium text-white outline-none transition-colors hover:bg-danger-text focus-visible:ring-2 focus-visible:ring-danger-strong disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none"
         >
           {isPending ? "Deleting…" : "Delete batch"}
         </button>

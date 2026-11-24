@@ -1,9 +1,9 @@
-import { auth } from "@/auth";
 import Card from "@/components/card";
 import BatchesIcon from "@/components/batches-icon";
 import BatchesList, { type BatchListItem } from "@/components/batches-list";
 import NewBatchDialog from "@/components/new-batch-dialog";
-import { listBatches, type Batch } from "@/lib/mf-service";
+import { type Batch } from "@/lib/mf-service";
+import { loadUserBatches } from "@/lib/user-batches";
 
 /**
  * Formats a batch's created timestamp for display, on the server, so the string
@@ -78,27 +78,15 @@ export default async function BatchesListCard() {
   );
 }
 
-/** Fetch + sort the batches; isolated so the fetch is the only thing that can throw. */
+/** Fetch + sort the batches. Session read, fetch, and error handling live in the
+ *  shared `loadUserBatches` helper; this just sorts + projects the result. */
 async function BatchesListContent() {
-  const session = await auth();
-  const userId = session?.user?.id;
-
-  if (!userId) {
+  const result = await loadUserBatches("BatchesListCard");
+  if ("error" in result) {
     return <CardError />;
   }
 
-  let items: BatchListItem[];
-  try {
-    items = toSortedItems(await listBatches(userId));
-  } catch (error) {
-    // listBatches throws on a missing MF_SERVICE_URL or a non-2xx response.
-    // Keep the failure contained to this card, but log it server-side so a
-    // backend outage is diagnosable rather than silently showing an error state.
-    console.error("BatchesListCard: failed to load batches", error);
-    return <CardError />;
-  }
-
-  return <BatchesList batches={items} />;
+  return <BatchesList batches={toSortedItems(result.batches)} />;
 }
 
 /** Shown when the session has no user id or the service call fails. */

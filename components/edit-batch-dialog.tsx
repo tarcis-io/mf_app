@@ -109,7 +109,7 @@ function EditBatchForm({
           <p
             id={errorId}
             role="alert"
-            className="rounded-lg border border-[#ef4444]/30 bg-[#ef4444]/[.08] px-3 py-2 text-sm text-[#b91c1c]"
+            className="rounded-lg border border-danger/30 bg-danger/[.08] px-3 py-2 text-sm text-danger-text"
           >
             {error}
           </p>
@@ -142,7 +142,7 @@ function EditBatchForm({
             }}
             className={`h-10 w-full rounded-lg border bg-background px-3 text-sm text-foreground outline-none transition-colors placeholder:text-foreground/40 focus-visible:ring-2 focus-visible:ring-primary ${
               nameInvalid
-                ? "border-[#ef4444] focus-visible:border-[#ef4444]"
+                ? "border-danger focus-visible:border-danger"
                 : "border-foreground/15 hover:border-foreground/25 focus-visible:border-foreground/25"
             }`}
           />

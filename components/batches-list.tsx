@@ -223,7 +223,7 @@ function IconButton({
       title={label}
       className={`inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-foreground/50 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary motion-reduce:transition-none ${
         destructive
-          ? "hover:bg-[#ef4444]/[.1] hover:text-[#dc2626]"
+          ? "hover:bg-danger/[.1] hover:text-danger-strong"
           : "hover:bg-foreground/[.06] hover:text-foreground"
       }`}
     >

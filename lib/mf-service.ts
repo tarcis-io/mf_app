@@ -321,7 +321,8 @@ async function authHeaders(audience: string): Promise<Record<string, string>> {
 /**
  * List the batches owned by `userId`, newest first, via
  * `GET {MF_SERVICE_URL}/batches`. (See the shared call conventions at the top of
- * this module.) Additionally throws if the body isn't a JSON array.
+ * this module.) Additionally throws if the body isn't a JSON array of batch
+ * objects.
  */
 export async function listBatches(userId: string): Promise<Batch[]> {
   const base = baseUrl();
@@ -355,7 +356,18 @@ export async function listBatches(userId: string): Promise<Batch[]> {
     );
   }
 
-  return body as Batch[];
+  // Validate each element's shape too (not just that it's an array), matching
+  // the single-batch path (`parseBatchResponse`). A 2xx array of the wrong
+  // objects — e.g. an error envelope list — would otherwise flow through to
+  // `summarizeBatches`/the UI as if it were batches. Throw (rather than filter)
+  // so a malformed response is a diagnosable failure, not a silent under-count.
+  if (!body.every(isBatch)) {
+    throw new Error(
+      "mf_service GET /batches returned an array with a non-batch element",
+    );
+  }
+
+  return body;
 }
 
 /**
@@ -634,23 +646,32 @@ export async function getServiceInfo(): Promise<ServiceInfo> {
 /**
  * Reduce a list of batches to a total and a per-status count. Every
  * `BatchStatus` is present in `counts` (zero when none), so callers can render
- * a stable set of rows without missing-key checks. An unexpected status value
- * from the service is ignored rather than throwing — the total still counts it.
+ * a stable set of rows without missing-key checks.
+ *
+ * `total` equals the sum of the per-status counts: a batch with an unexpected
+ * status value from the service is ignored entirely — not bucketed *and* not
+ * counted in the total — so the headline number always reconciles with the rows
+ * beneath it (a "5 total" over rows summing to 4 would read as a bug). An
+ * unknown status "shouldn't happen" unless the service adds a state the frontend
+ * doesn't know yet; when it does, the fix is to add it to `BATCH_STATUSES`, not
+ * to inflate the total with an uncategorizable batch.
  */
 export function summarizeBatches(batches: Batch[]): BatchSummary {
   const counts = Object.fromEntries(
     BATCH_STATUSES.map((status) => [status, 0]),
   ) as Record<BatchStatus, number>;
 
+  let total = 0;
   for (const batch of batches) {
     // `Object.hasOwn`, not `in`: `in` walks the prototype chain, so a status of
     // "toString"/"constructor"/etc. would pass the guard and corrupt `counts`
     // with an inherited key. Own-property check keeps unexpected values truly
-    // ignored (still counted in the total below).
+    // ignored — not counted in `counts` nor in `total`, so the two reconcile.
     if (Object.hasOwn(counts, batch.status)) {
       counts[batch.status] += 1;
+      total += 1;
     }
   }
 
-  return { total: batches.length, counts };
+  return { total, counts };
 }
