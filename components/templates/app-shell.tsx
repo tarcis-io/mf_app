@@ -233,6 +233,12 @@ export default function AppShell({ title, userLabel, children }: AppShellProps) 
         ref={navRef}
         tabIndex={-1}
         aria-label="Primary"
+        // On mobile the drawer is a modal slide-over (focus moved in, background
+        // scroll locked, Escape/backdrop to close), so announce it as a modal
+        // dialog to assistive tech. On lg+ it's a static navigation column, so
+        // the plain `nav` landmark semantics are kept (no dialog role).
+        role={mobileOpen ? "dialog" : undefined}
+        aria-modal={mobileOpen ? true : undefined}
         {...dragHandlers}
         // While dragging, follow the finger with no transition. Both `transform`
         // and `translate` are set inline so this wins over the Tailwind

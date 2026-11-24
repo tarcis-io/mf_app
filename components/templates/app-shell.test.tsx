@@ -277,6 +277,40 @@ describe("AppShell", () => {
       expect(document.body.style.overflow).toBe("hidden");
     });
 
+    it("is a plain nav landmark when closed and a modal dialog when open", () => {
+      renderShell();
+
+      // Closed: the drawer is the "Primary" navigation landmark, not a dialog.
+      expect(
+        screen.getByRole("navigation", { name: "Primary" }),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole("dialog")).toBeNull();
+
+      // Open (on mobile): it becomes a modal dialog so assistive tech treats it
+      // as a focus-trapping overlay rather than a landmark behind the page.
+      fireEvent.click(screen.getByRole("button", { name: "Open menu" }));
+      const dialog = screen.getByRole("dialog", { name: "Primary" });
+      expect(dialog).toHaveAttribute("aria-modal", "true");
+      expect(screen.queryByRole("navigation", { name: "Primary" })).toBeNull();
+    });
+
+    it("moves focus into the drawer on open and back to the trigger on close", () => {
+      renderShell();
+
+      const menu = screen.getByRole("button", { name: "Open menu" });
+      menu.focus();
+      expect(menu).toHaveFocus();
+
+      // Opening moves focus into the drawer (off the trigger).
+      fireEvent.click(menu);
+      expect(menu).not.toHaveFocus();
+      expect(screen.getByRole("dialog", { name: "Primary" })).toHaveFocus();
+
+      // Closing (Escape) restores focus to the menu button the user came from.
+      fireEvent.keyDown(document, { key: "Escape" });
+      expect(screen.getByRole("button", { name: "Open menu" })).toHaveFocus();
+    });
+
     it("has no in-drawer close button (dismissed via backdrop / Escape / swipe)", () => {
       renderShell();
 
@@ -312,7 +346,9 @@ describe("AppShell", () => {
       renderShell();
 
       fireEvent.click(screen.getByRole("button", { name: "Open menu" }));
-      const nav = screen.getByRole("navigation", { name: "Primary" });
+      // Open on mobile the drawer is exposed as a modal dialog, not the
+      // navigation landmark (see the role swap in app-shell.tsx).
+      const nav = screen.getByRole("dialog", { name: "Primary" });
       fireEvent.click(within(nav).getByRole("link", { name: "Home" }));
 
       expect(
@@ -340,7 +376,8 @@ describe("AppShell", () => {
     function openWithWidth(width = 256) {
       renderShell();
       fireEvent.click(screen.getByRole("button", { name: "Open menu" }));
-      const nav = screen.getByRole("navigation", { name: "Primary" });
+      // While open the drawer is a modal dialog (role swap in app-shell.tsx).
+      const nav = screen.getByRole("dialog", { name: "Primary" });
       Object.defineProperty(nav, "offsetWidth", {
         value: width,
         configurable: true,

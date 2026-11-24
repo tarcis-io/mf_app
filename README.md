@@ -256,13 +256,14 @@ through a small client in `lib/mf-service.ts`, pointed at the base URL in the
 `MF_SERVICE_URL` environment variable. Each call identifies the end user with an
 `X-User-Id` request header carrying the Google account id (the OAuth `sub`,
 surfaced as `session.user.id`; see `auth.ts`), which `mf_service` uses to scope
-every batch to its owner. The home page's **Batches** card is the first
-consumer: it lists the signed-in user's batches (`GET /batches`) and shows the
-total plus a per-status breakdown. `mf_service` has no counts endpoint, so the
-totals are derived from the list client-side.
+every batch to its owner. The full batch surface is wired up: the home page's
+**Batches** card shows the total plus a per-status breakdown, and the
+**/batches** page lists the signed-in user's batches and lets them create a
+batch (uploading the five required files via `POST /batches`), rename, and
+delete. `mf_service` has no counts endpoint, so the totals are derived from the
+list server-side. The **About** page is a second consumer: it reads
+`GET /version` to display the running `mf_service` and `mf_engine` versions.
 
 `MF_SERVICE_URL` is required in production (the app fails fast without it) and
-optional locally — if it's unset, the Batches card shows an error state and the
-rest of the app works. More of the `mf_service` surface (creating batches,
-uploading files, per-batch views) is expected to be wired up as the project
-grows.
+optional locally — if it's unset, the batch views and the About version card
+show an error/unavailable state and the rest of the app works.

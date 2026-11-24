@@ -24,7 +24,7 @@ export default function Login() {
         <form action={signInAction}>
           <button
             type="submit"
-            className="relative flex h-12 cursor-pointer items-center justify-center gap-3 rounded-full bg-primary px-6 text-base font-medium text-background transition-colors hover:bg-primary-hover"
+            className="relative flex h-12 cursor-pointer items-center justify-center gap-3 rounded-full bg-primary px-6 text-base font-medium text-background outline-none transition-colors hover:bg-primary-hover focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             <svg
               aria-hidden="true"

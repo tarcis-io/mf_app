@@ -5,8 +5,9 @@
  * This module is used only from Server Components / server code: it reads the
  * `MF_SERVICE_URL` environment variable and sends the caller's identity in a
  * request header. Do not import it into a Client Component — the base URL and
- * the per-user header must never be exposed to the browser. (The one caller
- * today is the home page's `BatchesCard`, a Server Component.)
+ * the per-user header must never be exposed to the browser. Callers today are
+ * the home and `/batches` pages (Server Components) and the batch Server Actions
+ * in `app/batches/actions.ts`; the About page also calls `getServiceInfo`.
  *
  * `mf_service` has no aggregate/stats endpoint, so callers that need counts
  * fetch the user's batches with `listBatches` and reduce them with

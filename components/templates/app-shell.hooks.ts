@@ -105,9 +105,15 @@ export function useDrawerDragToClose(
 
 /**
  * Behavior that applies only while the mobile drawer is open: close on Escape,
- * move focus into the drawer, and lock scrolling on the page behind it. None of
- * this runs when `open` is false — on desktop the drawer is a static column, so
- * the shell leaves `open` false there.
+ * move focus into the drawer, lock scrolling on the page behind it, and return
+ * focus to whatever was focused before (the menu button) on close. None of this
+ * runs when `open` is false — on desktop the drawer is a static column, so the
+ * shell leaves `open` false there.
+ *
+ * Moving focus in on open and restoring it on close is what makes the drawer
+ * usable with a keyboard/screen reader: opening it drops the user into the nav,
+ * and closing it (link click, Escape, backdrop, swipe) puts them back on the
+ * trigger instead of at the top of the document.
  *
  * @param open     whether the mobile drawer is currently open
  * @param navRef   ref to the drawer element (receives focus on open)
@@ -120,6 +126,13 @@ export function useDrawerDismissAndLock(
 ): void {
   useEffect(() => {
     if (!open) return;
+
+    // Remember the element focused before the drawer opened (the "Open menu"
+    // button), so focus can be returned to it on close.
+    const previouslyFocused =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
 
     navRef.current?.focus();
 
@@ -134,6 +147,12 @@ export function useDrawerDismissAndLock(
     return () => {
       document.removeEventListener("keydown", onKeyDown);
       document.body.style.overflow = overflow;
+      // Restore focus to the trigger, but only if it's still in the document
+      // and focus hasn't already moved elsewhere (e.g. the user tabbed away
+      // or the element was unmounted).
+      if (previouslyFocused?.isConnected) {
+        previouslyFocused.focus();
+      }
     };
   }, [open, navRef, onClose]);
 }

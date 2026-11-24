@@ -39,6 +39,13 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=8080
 ENV HOSTNAME=0.0.0.0
 
+# `tini` as PID 1: forwards signals (so Cloud Run's SIGTERM reaches Node for a
+# graceful shutdown + in-flight request draining) and reaps zombies — neither of
+# which Node does when it is itself PID 1.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tini \
+    && rm -rf /var/lib/apt/lists/*
+
 # Run as an unprivileged user.
 RUN groupadd --system --gid 1001 nodejs \
     && useradd --system --uid 1001 --gid nodejs nextjs
@@ -51,4 +58,5 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
 USER nextjs
 EXPOSE 8080
+ENTRYPOINT ["tini", "--"]
 CMD ["node", "server.js"]
