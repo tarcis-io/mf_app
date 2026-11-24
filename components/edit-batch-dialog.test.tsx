@@ -48,6 +48,9 @@ describe("EditBatchDialog", () => {
     render(<EditBatchDialog batch={BATCH} open onClose={vi.fn()} onDone={vi.fn()} />);
 
     const submit = screen.getByRole("button", { name: /edit batch/i });
+    // A real form-submit button (the tests submit via the form's submit event),
+    // so a regression to type="button" would stop triggering onSubmit live.
+    expect(submit).toHaveAttribute("type", "submit");
     // Unchanged -> disabled (renaming to the same value is a no-op).
     expect(submit).toBeDisabled();
 

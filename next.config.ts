@@ -38,20 +38,33 @@ import type { NextConfig } from "next";
  */
 const isDev = process.env.NODE_ENV !== "production";
 
-const CONTENT_SECURITY_POLICY = [
-  `default-src 'self'`,
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
-  `style-src 'self' 'unsafe-inline'`,
-  `img-src 'self' data:`,
-  `font-src 'self'`,
-  `connect-src 'self'`,
-  `object-src 'none'`,
-  `base-uri 'self'`,
-  `form-action 'self' https://accounts.google.com`,
-  `frame-ancestors 'none'`,
-  `frame-src 'none'`,
-  `upgrade-insecure-requests`,
-].join("; ");
+/**
+ * Build the Content-Security-Policy header value. Pure and exported (Next reads
+ * only the default config export, so the extra named export is inert at the
+ * framework layer) so the directives can be asserted directly in a test —
+ * `next.config.ts` isn't otherwise unit-testable, and the CSP is a security
+ * boundary whose directives the DEPLOYMENT.md troubleshooting table treats as
+ * load-bearing. `dev` adds `'unsafe-eval'` to `script-src` only (React's dev
+ * build needs it); everything else is identical in both environments.
+ */
+export function buildContentSecurityPolicy(dev: boolean): string {
+  return [
+    `default-src 'self'`,
+    `script-src 'self' 'unsafe-inline'${dev ? " 'unsafe-eval'" : ""}`,
+    `style-src 'self' 'unsafe-inline'`,
+    `img-src 'self' data:`,
+    `font-src 'self'`,
+    `connect-src 'self'`,
+    `object-src 'none'`,
+    `base-uri 'self'`,
+    `form-action 'self' https://accounts.google.com`,
+    `frame-ancestors 'none'`,
+    `frame-src 'none'`,
+    `upgrade-insecure-requests`,
+  ].join("; ");
+}
+
+const CONTENT_SECURITY_POLICY = buildContentSecurityPolicy(isDev);
 
 /**
  * Static security headers applied to every response (via `headers()` below).
@@ -66,8 +79,8 @@ const securityHeaders = [
   },
   // Disable MIME sniffing.
   { key: "X-Content-Type-Options", value: "nosniff" },
-  // Legacy clickjacking protection; CSP `frame-ancestors 'none'` (in proxy.ts)
-  // is the modern equivalent for browsers that honor it.
+  // Legacy clickjacking protection; the CSP `frame-ancestors 'none'` above is
+  // the modern equivalent for browsers that honor it.
   { key: "X-Frame-Options", value: "DENY" },
   // Don't leak full URLs (Auth.js endpoints can carry callback params) to
   // other origins.
@@ -104,8 +117,9 @@ const nextConfig: NextConfig = {
   // `<Link prefetch>` prefetches only the static shell of a route, not its
   // dynamic data.
   partialPrefetching: true,
-  // Apply the static security headers to every route. (CSP is per-request in
-  // proxy.ts.)
+  // Apply the static security headers (including the CSP defined above) to
+  // every route. `proxy.ts` sets no headers — it only does auth
+  // route-protection.
   async headers() {
     return [
       {

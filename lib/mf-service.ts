@@ -53,6 +53,42 @@ export interface BatchSummary {
 }
 
 /**
+ * Narrow an arbitrary parsed JSON value to a {@link Batch}. A real batch is an
+ * object carrying at least the `id` and `status` the app reads; that's enough
+ * to tell a genuine `BatchResponse` apart from a misconfigured proxy's HTML or
+ * an unexpected payload. The `status` string is not constrained to a known
+ * `BatchStatus` here — the service owns that enum, and `summarizeBatches`
+ * already tolerates an unknown value — so this guards the response *shape*, not
+ * the lifecycle vocabulary.
+ */
+function isBatch(value: unknown): value is Batch {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as Record<string, unknown>).id === "string" &&
+    typeof (value as Record<string, unknown>).status === "string"
+  );
+}
+
+/**
+ * Parse a single-batch response body and fail with a clear, diagnosable error
+ * if it isn't a batch object. Shared by the endpoints that return one batch
+ * ({@link createBatch}, {@link renameBatch}) so a 2xx with an unexpected body
+ * (e.g. HTML from a misconfigured proxy) surfaces the same way the list/version
+ * calls already handle it, rather than as a bare `SyntaxError` or a silent cast.
+ */
+async function parseBatchResponse(
+  response: Response,
+  context: string,
+): Promise<Batch> {
+  const body: unknown = await response.json();
+  if (!isBatch(body)) {
+    throw new Error(`${context} returned an unexpected body (not a batch object)`);
+  }
+  return body;
+}
+
+/**
  * How long (ms) to wait for `mf_service` before aborting the request. Without a
  * cap, a hung backend would stall the Server Component render (and the home
  * page's Suspense boundary) until the platform's own timeout fires. On abort the
@@ -252,7 +288,7 @@ export async function createBatch(
     );
   }
 
-  return (await response.json()) as Batch;
+  return parseBatchResponse(response, "mf_service POST /batches");
 }
 
 /**
@@ -309,7 +345,7 @@ export async function renameBatch(
     );
   }
 
-  return (await response.json()) as Batch;
+  return parseBatchResponse(response, `mf_service PATCH /batches/${id}`);
 }
 
 /**

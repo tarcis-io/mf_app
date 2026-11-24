@@ -313,6 +313,69 @@ describe("AppShell", () => {
       expect(screen.getByRole("button", { name: "Open menu" })).toHaveFocus();
     });
 
+    // Focus trap: the drawer is aria-modal="true", so Tab must cycle within it
+    // rather than escaping to the (scroll-locked) page behind. jsdom doesn't
+    // move focus natively on a Tab keydown, so these drive focus to a boundary
+    // element and assert the handler wraps it to the other end.
+    describe("focus trap (Tab cycling)", () => {
+      /** The drawer's focusable elements (nav links + the sign-out button), in order. */
+      function drawerFocusables() {
+        const dialog = screen.getByRole("dialog", { name: "Primary" });
+        return Array.from(
+          dialog.querySelectorAll<HTMLElement>(
+            'a[href], button:not([disabled])',
+          ),
+        );
+      }
+
+      it("wraps Tab from the last focusable back to the first", () => {
+        renderShell();
+        fireEvent.click(screen.getByRole("button", { name: "Open menu" }));
+
+        const focusables = drawerFocusables();
+        const first = focusables[0]!;
+        const last = focusables[focusables.length - 1]!;
+
+        last.focus();
+        expect(last).toHaveFocus();
+
+        fireEvent.keyDown(document, { key: "Tab" });
+        // Tab off the last item cycles to the first, not out to the page.
+        expect(first).toHaveFocus();
+      });
+
+      it("wraps Shift+Tab from the first focusable to the last", () => {
+        renderShell();
+        fireEvent.click(screen.getByRole("button", { name: "Open menu" }));
+
+        const focusables = drawerFocusables();
+        const first = focusables[0]!;
+        const last = focusables[focusables.length - 1]!;
+
+        first.focus();
+        expect(first).toHaveFocus();
+
+        fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+        expect(last).toHaveFocus();
+      });
+
+      it("wraps Shift+Tab from the drawer container itself to the last focusable", () => {
+        renderShell();
+        fireEvent.click(screen.getByRole("button", { name: "Open menu" }));
+
+        // On open focus sits on the drawer container (tabIndex=-1); Shift+Tab
+        // from there should land on the last item, not leave the drawer.
+        const dialog = screen.getByRole("dialog", { name: "Primary" });
+        expect(dialog).toHaveFocus();
+
+        const focusables = drawerFocusables();
+        const last = focusables[focusables.length - 1]!;
+
+        fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+        expect(last).toHaveFocus();
+      });
+    });
+
     it("has no in-drawer close button (dismissed via backdrop / Escape / swipe)", () => {
       renderShell();
 

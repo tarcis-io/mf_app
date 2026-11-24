@@ -141,6 +141,10 @@ describe("NewBatchDialog", () => {
       openDialog();
 
       const submit = screen.getByRole("button", { name: /create batch/i });
+      // It must be a real form-submit button: the tests drive submission via the
+      // form's submit event (see submitForm), so a regression to type="button"
+      // would silently stop triggering onSubmit in the real UI.
+      expect(submit).toHaveAttribute("type", "submit");
       expect(submit).toBeDisabled();
 
       fillValidForm();

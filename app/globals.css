@@ -1,12 +1,16 @@
 @import "tailwindcss";
 
 /*
- * Theme tokens. Three layers decide the active palette, in increasing
- * precedence:
- *   1. `:root` — the light palette, the baseline.
- *   2. `@media (prefers-color-scheme: dark)` — the dark palette for the
- *      "System" choice (no explicit override). This is what makes System follow
- *      the OS with no JavaScript and no flash on first paint.
+ * Theme tokens. Each palette's values are written exactly once and shared by
+ * two selectors, so light and dark can never drift between the "System" and the
+ * explicit cases. The active palette is decided by, in increasing precedence:
+ *   1. The light palette on `:root` — the baseline, applied unless something
+ *      below overrides it.
+ *   2. `@media (prefers-color-scheme: dark)` scoped to `:root:not([data-theme])`
+ *      — the dark palette for the "System" choice only (no explicit override).
+ *      This is what makes System follow the OS with no JavaScript and no flash
+ *      on first paint; scoping it to `:not([data-theme])` means an explicit
+ *      choice below always wins without relying on selector-specificity order.
  *   3. `html[data-theme="light" | "dark"]` — an explicit user choice from the
  *      Settings radio, which wins over the OS preference. The theme-init script
  *      (see `lib/theme.ts`, injected in `app/layout.tsx`) sets this attribute
@@ -16,39 +20,10 @@
  * Only the raw color values differ between light and dark; the `@theme inline`
  * mapping below is palette-agnostic.
  */
-:root {
-  --background: #ffffff;
-  --foreground: #000000;
-  --primary: #f97316;
-  --primary-hover: #ea580c;
-  --sidebar: #1e293b;
-  --sidebar-foreground: #e2e8f0;
-  --sidebar-muted: #94a3b8;
-  --sidebar-hover: #334155;
-  --sidebar-border: #334155;
-  color-scheme: light;
-}
 
-/* Dark palette for the "System" choice (OS prefers dark, no explicit override).
-   A slate-900 surface with a near-white foreground; the orange brand primary is
-   kept (it reads well on dark), and the sidebar is nudged a touch darker so it
-   still separates from the now-dark main surface. */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0f172a;
-    --foreground: #e2e8f0;
-    --primary: #f97316;
-    --primary-hover: #fb923c;
-    --sidebar: #0b1220;
-    --sidebar-foreground: #e2e8f0;
-    --sidebar-muted: #94a3b8;
-    --sidebar-hover: #1e293b;
-    --sidebar-border: #1e293b;
-    color-scheme: dark;
-  }
-}
-
-/* Explicit "Light" choice: force the light palette regardless of OS. */
+/* Light palette: the baseline, and the explicit "Light" choice (which forces it
+   regardless of OS). Written once, shared by both selectors. */
+:root,
 html[data-theme="light"] {
   --background: #ffffff;
   --foreground: #000000;
@@ -62,7 +37,26 @@ html[data-theme="light"] {
   color-scheme: light;
 }
 
-/* Explicit "Dark" choice: force the dark palette regardless of OS. */
+/* Dark palette: the "System" choice when the OS prefers dark (no explicit
+   override), and the explicit "Dark" choice. Written once, shared by both.
+   A slate-900 surface with a near-white foreground; the orange brand primary is
+   kept (it reads well on dark), and the sidebar is nudged a touch darker so it
+   still separates from the now-dark main surface. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --background: #0f172a;
+    --foreground: #e2e8f0;
+    --primary: #f97316;
+    --primary-hover: #fb923c;
+    --sidebar: #0b1220;
+    --sidebar-foreground: #e2e8f0;
+    --sidebar-muted: #94a3b8;
+    --sidebar-hover: #1e293b;
+    --sidebar-border: #1e293b;
+    color-scheme: dark;
+  }
+}
+
 html[data-theme="dark"] {
   --background: #0f172a;
   --foreground: #e2e8f0;

@@ -15,25 +15,17 @@ import {
 } from "@/lib/mf-service";
 
 /**
- * Server Action behind the "New batch" dialog (see `components/new-batch-dialog`).
- * Colocated with the Batches page rather than in `app/actions.ts` (which is the
- * auth actions) so batch concerns stay together and discoverable.
- *
- * It runs on the server, so the per-user `X-User-Id` and the `mf_service` base
- * URL never reach the browser: the dialog (a Client Component) submits the form
- * fields + files, and this action reads the session, forwards them to
- * `createBatch`, and revalidates the list.
- *
- * Returns a typed result instead of throwing, so the dialog can keep itself
- * open and show a banner on failure, then close + reset on success. The
- * `duplicate` flag lets the dialog treat a taken name as a field-level problem
- * (it marks the name input `aria-invalid` and focuses it) rather than just a
- * generic banner:
- *   - `{ ok: true }`                      — created; the list has been revalidated.
+ * The result every batch Server Action (create / rename / delete) returns
+ * instead of throwing, so the calling dialog can keep itself open and show a
+ * banner on failure, then close + refresh on success. The `duplicate` flag lets
+ * a dialog treat a taken name as a field-level problem (it marks the name input
+ * `aria-invalid` and focuses it) rather than just a generic banner; the delete
+ * action never sets it:
+ *   - `{ ok: true }`                      — succeeded; the list has been revalidated.
  *   - `{ ok: false, duplicate: true }`    — the name is already taken (409).
  *   - `{ ok: false, duplicate: false }`   — anything else (missing file, network, …).
  */
-export interface CreateBatchResult {
+export interface BatchActionResult {
   ok: boolean;
   /** When `ok` is false, whether the failure was a duplicate name (vs. a generic error). */
   duplicate?: boolean;
@@ -41,9 +33,19 @@ export interface CreateBatchResult {
   error?: string;
 }
 
+/**
+ * Server Action behind the "New batch" dialog (see `components/new-batch-dialog`).
+ * Colocated with the Batches page rather than in `app/actions.ts` (which is the
+ * auth actions) so batch concerns stay together and discoverable.
+ *
+ * It runs on the server, so the per-user `X-User-Id` and the `mf_service` base
+ * URL never reach the browser: the dialog (a Client Component) submits the form
+ * fields + files, and this action reads the session, forwards them to
+ * `createBatch`, and revalidates the list. Returns a {@link BatchActionResult}.
+ */
 export async function createBatchAction(
   formData: FormData,
-): Promise<CreateBatchResult> {
+): Promise<BatchActionResult> {
   const session = await auth();
   const userId = session?.user?.id;
   if (!userId) {
@@ -105,7 +107,7 @@ export async function createBatchAction(
 export async function renameBatchAction(
   id: string,
   formData: FormData,
-): Promise<CreateBatchResult> {
+): Promise<BatchActionResult> {
   const session = await auth();
   const userId = session?.user?.id;
   if (!userId) {
@@ -153,7 +155,7 @@ export async function renameBatchAction(
  */
 export async function deleteBatchAction(
   id: string,
-): Promise<CreateBatchResult> {
+): Promise<BatchActionResult> {
   const session = await auth();
   const userId = session?.user?.id;
   if (!userId) {

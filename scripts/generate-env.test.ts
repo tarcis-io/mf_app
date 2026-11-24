@@ -1,4 +1,10 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -85,6 +91,22 @@ describe("generateEnvLocal", () => {
     expect(out).toMatch(/^AUTH_GOOGLE_ID=$/m);
     expect(out).toMatch(/^AUTH_GOOGLE_SECRET=$/m);
   });
+
+  // The generated file holds a freshly minted AUTH_SECRET, so it's written
+  // owner-read/write only (0o600). POSIX-only: Windows doesn't carry these mode
+  // bits, and the script targets macOS/Linux/Windows, so skip the assertion there.
+  it.skipIf(process.platform === "win32")(
+    "writes .env.local with owner-only (0o600) permissions",
+    () => {
+      writeExample();
+
+      generateEnvLocal({ examplePath, localPath, secret: "s" });
+
+      // Mask off the file-type bits; the low 9 bits are the permission mode.
+      const mode = statSync(localPath).mode & 0o777;
+      expect(mode).toBe(0o600);
+    },
+  );
 
   it("uncomments only the setting line, not the prose mention of the flag", () => {
     writeExample();

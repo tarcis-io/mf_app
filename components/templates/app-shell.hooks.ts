@@ -104,16 +104,28 @@ export function useDrawerDragToClose(
 }
 
 /**
+ * Selector for the elements that can hold keyboard focus inside the drawer. The
+ * drawer's own content is links and buttons, so this stays deliberately simple;
+ * `:not([disabled])` drops the disabled ones, which can't be focused.
+ */
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
  * Behavior that applies only while the mobile drawer is open: close on Escape,
- * move focus into the drawer, lock scrolling on the page behind it, and return
- * focus to whatever was focused before (the menu button) on close. None of this
- * runs when `open` is false — on desktop the drawer is a static column, so the
- * shell leaves `open` false there.
+ * move focus into the drawer, trap Tab focus within it, lock scrolling on the
+ * page behind it, and return focus to whatever was focused before (the menu
+ * button) on close. None of this runs when `open` is false — on desktop the
+ * drawer is a static column, so the shell leaves `open` false there.
  *
  * Moving focus in on open and restoring it on close is what makes the drawer
  * usable with a keyboard/screen reader: opening it drops the user into the nav,
  * and closing it (link click, Escape, backdrop, swipe) puts them back on the
- * trigger instead of at the top of the document.
+ * trigger instead of at the top of the document. The Tab trap keeps focus
+ * inside the slide-over while it's open, which is what the drawer's
+ * `aria-modal="true"` promises — Tab past the last item wraps to the first, and
+ * Shift+Tab past the first wraps to the last, so focus can't escape to the
+ * (inert, scroll-locked) page behind it.
  *
  * @param open     whether the mobile drawer is currently open
  * @param navRef   ref to the drawer element (receives focus on open)
@@ -137,7 +149,44 @@ export function useDrawerDismissAndLock(
     navRef.current?.focus();
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") {
+        onClose();
+        return;
+      }
+
+      if (event.key !== "Tab") return;
+      const drawer = navRef.current;
+      if (!drawer) return;
+
+      // Resolve focusables at keydown time (not on open) so the trap stays
+      // correct if the drawer's contents change while it's open.
+      const focusables = Array.from(
+        drawer.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+      );
+      if (focusables.length === 0) {
+        // Nothing focusable inside: keep focus on the drawer itself rather than
+        // letting Tab move it out to the page behind.
+        event.preventDefault();
+        drawer.focus();
+        return;
+      }
+
+      const first = focusables[0]!;
+      const last = focusables[focusables.length - 1]!;
+      const active = document.activeElement;
+
+      // Wrap at the boundaries. Treat focus on the drawer container itself (it's
+      // `tabIndex=-1` and gets focus on open) as "before the first" so the first
+      // Tab lands on the first item and Shift+Tab lands on the last.
+      if (event.shiftKey) {
+        if (active === first || active === drawer) {
+          event.preventDefault();
+          last.focus();
+        }
+      } else if (active === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener("keydown", onKeyDown);
 

@@ -16,11 +16,13 @@ pnpm setup    # scaffold a ready-to-run .env.local
 pnpm dev      # http://localhost:3000
 ```
 
-`pnpm setup` scaffolds a ready-to-run `.env.local` (a generated `AUTH_SECRET`
-plus dev-login enabled) so `pnpm dev` boots with no Google setup; it never
-overwrites an existing file. See [Local dev without Google](#local-dev-without-google)
-for how that works, or [Google OAuth setup](#google-oauth-setup) to use real
-sign-in instead.
+`pnpm setup` here runs this project's own script (`scripts/generate-env.mjs`
+via the `setup` entry in `package.json`), not pnpm's built-in PATH setup. It
+scaffolds a ready-to-run `.env.local` (a generated `AUTH_SECRET` plus dev-login
+enabled) so `pnpm dev` boots with no Google setup, and never overwrites an
+existing file. See [Local dev without Google](#local-dev-without-google) for how
+that works, or [Google OAuth setup](#google-oauth-setup) to use real sign-in
+instead.
 
 ## Authentication
 
@@ -152,6 +154,10 @@ pnpm test:watch   # run tests in watch mode
 
 Tests use [Vitest](https://vitest.dev) with React Testing Library in a jsdom
 environment. Test files live next to the code they cover as `*.test.tsx`.
+
+> Run `pnpm install` on the machine (and OS) where you run the tests. Vitest
+> pulls a platform-native binary, so a `node_modules` installed on one OS (or
+> copied between machines) won't run the suite on another without reinstalling.
 
 ## Layout
 

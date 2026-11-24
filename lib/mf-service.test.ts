@@ -202,6 +202,7 @@ describe("getServiceInfo", () => {
   });
 
   it("GETs {MF_SERVICE_URL}/version, uncached, with no X-User-Id (not per-user)", async () => {
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(new Response(JSON.stringify(INFO), { status: 200 }));
@@ -214,7 +215,9 @@ describe("getServiceInfo", () => {
     expect(init?.cache).toBe("no-store");
     // /version is service identity, not per-user — no X-User-Id header.
     expect(new Headers(init?.headers).get("X-User-Id")).toBeNull();
-    // Capped by an abort signal like the other calls.
+    // Capped by the same 5s abort signal as the other calls (abort-propagation
+    // is proven in the listBatches timeout test).
+    expect(timeoutSpy).toHaveBeenCalledWith(5000);
     expect(init?.signal).toBeInstanceOf(AbortSignal);
   });
 
@@ -487,6 +490,20 @@ describe("createBatch", () => {
     ).rejects.toThrow(/MF_SERVICE_URL/);
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("caps the request with a 5s abort signal like the other calls", async () => {
+    // Same cap as listBatches (abort-propagation is proven there); confirm this
+    // caller also requests the 5000ms signal and passes it to fetch.
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(JSON.stringify(makeBatch()), { status: 201 }));
+
+    await createBatch("user-123", "Spring run", makeFiles());
+
+    expect(timeoutSpy).toHaveBeenCalledWith(5000);
+    expect(fetchMock.mock.calls[0]![1]?.signal).toBeInstanceOf(AbortSignal);
+  });
 });
 
 describe("renameBatch", () => {
@@ -574,6 +591,21 @@ describe("renameBatch", () => {
     expect(err).not.toBeInstanceOf(BatchNotFoundError);
     expect((err as Error).message).toMatch(/500/);
   });
+
+  it("caps the request with a 5s abort signal like the other calls", async () => {
+    // Same cap as listBatches (the abort-propagates-as-rejection mechanism is
+    // proven there); here we just confirm this caller also asks for the 5000ms
+    // signal and passes it to fetch, so a dropped signal would be caught.
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(JSON.stringify(makeBatch()), { status: 200 }));
+
+    await renameBatch("user-123", "batch-1", "Renamed");
+
+    expect(timeoutSpy).toHaveBeenCalledWith(5000);
+    expect(fetchMock.mock.calls[0]![1]?.signal).toBeInstanceOf(AbortSignal);
+  });
 });
 
 describe("deleteBatch", () => {
@@ -630,5 +662,19 @@ describe("deleteBatch", () => {
     expect(err).toBeInstanceOf(Error);
     expect(err).not.toBeInstanceOf(BatchNotFoundError);
     expect((err as Error).message).toMatch(/500/);
+  });
+
+  it("caps the request with a 5s abort signal like the other calls", async () => {
+    // Same cap as listBatches (abort-propagation is proven there); confirm this
+    // caller also requests the 5000ms signal and passes it to fetch.
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(null, { status: 204 }));
+
+    await deleteBatch("user-123", "batch-1");
+
+    expect(timeoutSpy).toHaveBeenCalledWith(5000);
+    expect(fetchMock.mock.calls[0]![1]?.signal).toBeInstanceOf(AbortSignal);
   });
 });
