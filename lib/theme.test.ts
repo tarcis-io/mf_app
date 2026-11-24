@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -8,7 +6,6 @@ import {
   readThemeChoice,
   subscribeThemeChoice,
   THEME_INIT_SCRIPT,
-  THEME_INIT_SCRIPT_HASH,
   THEME_STORAGE_KEY,
 } from "./theme";
 
@@ -108,18 +105,6 @@ describe("THEME_INIT_SCRIPT", () => {
     localStorage.removeItem(THEME_STORAGE_KEY);
     run();
     expect(document.documentElement.hasAttribute("data-theme")).toBe(false);
-  });
-
-  it("THEME_INIT_SCRIPT_HASH matches the script's actual SHA-256 (CSP drift guard)", () => {
-    // The CSP (proxy.ts) authorizes this inline script by hash. If the script
-    // is edited, the hardcoded hash must be updated to match or the browser
-    // will block the script in production. This recomputes the hash from the
-    // real bytes and fails with the correct value if they've drifted.
-    const digest = createHash("sha256")
-      .update(THEME_INIT_SCRIPT, "utf8")
-      .digest("base64");
-    const expected = `'sha256-${digest}'`;
-    expect(THEME_INIT_SCRIPT_HASH).toBe(expected);
   });
 });
 

@@ -23,12 +23,15 @@ const securityHeaders = [
   // Don't leak full URLs (Auth.js endpoints can carry callback params) to
   // other origins.
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  // Deny access to powerful features the app doesn't use.
+  // Deny access to powerful features the app doesn't use. Only standardized
+  // feature tokens are listed: `browsing-topics` is intentionally omitted — it's
+  // a non-standard Chrome token that browsers log as "Unrecognized feature",
+  // cluttering the console without reliably opting out of the Topics API.
   {
     key: "Permissions-Policy",
     value:
-      "camera=(), microphone=(), geolocation=(), browsing-topics=(), " +
-      "payment=(), usb=(), accelerometer=(), gyroscope=(), magnetometer=()",
+      "camera=(), microphone=(), geolocation=(), payment=(), usb=(), " +
+      "accelerometer=(), gyroscope=(), magnetometer=()",
   },
   // Isolate the browsing context from cross-origin windows.
   { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
