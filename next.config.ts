@@ -17,6 +17,11 @@ import type { NextConfig } from "next";
  * cross-origin form posts are all still locked down.
  *
  * Notes on specific directives:
+ *   - `script-src`: adds `'unsafe-eval'` IN DEVELOPMENT ONLY. React's dev build
+ *     uses `eval()` for debugging features (e.g. reconstructing server error
+ *     stacks in the browser); without it `next dev` logs CSP `eval` violations.
+ *     Neither React nor Next uses `eval` in production, so it's gated out of the
+ *     prod policy. (See Next's own CSP guide.)
  *   - `style-src 'self' 'unsafe-inline'`: Next/React inject inline styles.
  *   - `img-src 'self' data:`: same-origin images + inlined data: URIs.
  *   - `connect-src 'self'`: same-origin requests only today. When wiring up
@@ -26,10 +31,16 @@ import type { NextConfig } from "next";
  *   - `frame-ancestors 'none'`: clickjacking protection (pairs with the static
  *     X-Frame-Options: DENY).
  *   - `upgrade-insecure-requests`: defense-in-depth for mixed content.
+ *
+ * `NODE_ENV` is `"development"` under `next dev` and `"production"` for
+ * `next build`/`next start` (and the Docker image), so this reads it at config
+ * evaluation time to pick the right policy.
  */
+const isDev = process.env.NODE_ENV !== "production";
+
 const CONTENT_SECURITY_POLICY = [
   `default-src 'self'`,
-  `script-src 'self' 'unsafe-inline'`,
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
   `style-src 'self' 'unsafe-inline'`,
   `img-src 'self' data:`,
   `font-src 'self'`,
