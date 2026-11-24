@@ -1,71 +1,24 @@
 import type { NextConfig } from "next";
 
-/**
- * The app's Content-Security-Policy. STATIC and defined here (not in `proxy.ts`)
- * so it's emitted at the framework layer on every response — including the
- * statically prerendered pages that Partial Prerendering / `cacheComponents`
- * generates at build time and that Firebase App Hosting serves from its CDN.
- *
- * Why not a per-request nonce? It was tried and fails on this stack: a nonce
- * minted per request in middleware can't match the nonce baked into
- * prerendered / CDN-cached HTML, and Next emits an unbounded, per-build set of
- * inline streaming scripts (`self.__next_f.push(...)`) that no fixed hash list
- * can enumerate. So `script-src` allows `'unsafe-inline'` — a deliberate
- * trade-off to keep a working CSP alongside static rendering + CDN caching. The
- * other directives stay strict, so clickjacking (`frame-ancestors`), base-tag
- * injection (`base-uri`), plugin/object embedding (`object-src`), and
- * cross-origin form posts are all still locked down.
- *
- * Notes on specific directives:
- *   - `script-src`: adds `'unsafe-eval'` IN DEVELOPMENT ONLY. React's dev build
- *     uses `eval()` for debugging features (e.g. reconstructing server error
- *     stacks in the browser); without it `next dev` logs CSP `eval` violations.
- *     Neither React nor Next uses `eval` in production, so it's gated out of the
- *     prod policy. (See Next's own CSP guide.)
- *   - `style-src 'self' 'unsafe-inline'`: Next/React inject inline styles.
- *   - `img-src 'self' data:`: same-origin images + inlined data: URIs.
- *   - `connect-src 'self'`: same-origin requests only. mf_service is called
- *     server-side (see lib/mf-service.ts), which the browser CSP never governs,
- *     so no mf_service origin is needed here. Add one only if a Client Component
- *     is ever introduced that fetches mf_service (or another origin) directly
- *     from the browser.
- *   - `form-action 'self' https://accounts.google.com`: the sign-in flow posts
- *     to Google's OAuth endpoint, so it must be allowed alongside 'self'.
- *   - `frame-ancestors 'none'`: clickjacking protection (pairs with the static
- *     X-Frame-Options: DENY).
- *   - `upgrade-insecure-requests`: defense-in-depth for mixed content.
- *
- * `NODE_ENV` is `"development"` under `next dev` and `"production"` for
- * `next build`/`next start` (and the Docker image), so this reads it at config
- * evaluation time to pick the right policy.
- */
-const isDev = process.env.NODE_ENV !== "production";
+// Relative (not the `@/` alias): Next loads this config file before the tsconfig
+// path alias is necessarily applied, and Firebase App Hosting's generated
+// wrapper imports the compiled config too — a relative path resolves in both.
+import { buildContentSecurityPolicy } from "./lib/content-security-policy";
 
 /**
- * Build the Content-Security-Policy header value. Pure and exported (Next reads
- * only the default config export, so the extra named export is inert at the
- * framework layer) so the directives can be asserted directly in a test —
- * `next.config.ts` isn't otherwise unit-testable, and the CSP is a security
- * boundary whose directives the DEPLOYMENT.md troubleshooting table treats as
- * load-bearing. `dev` adds `'unsafe-eval'` to `script-src` only (React's dev
- * build needs it); everything else is identical in both environments.
+ * The Content-Security-Policy and the full rationale behind it live in
+ * `@/lib/content-security-policy` — a dedicated module so the policy survives
+ * Firebase App Hosting's deploy-time rewrite of this file (its generated wrapper
+ * re-exports only the `default` config, dropping named exports) and so it stays
+ * unit-testable (see `lib/content-security-policy.test.ts`). The CSP is static and emitted here,
+ * at the framework layer, on every response — including prerendered / CDN-cached
+ * pages that `proxy.ts` never runs on.
+ *
+ * `NODE_ENV` is `"development"` under `next dev` and `"production"` for
+ * `next build`/`next start` (and the Docker image); `dev` adds `'unsafe-eval'`
+ * to `script-src` only (React's dev build needs it).
  */
-export function buildContentSecurityPolicy(dev: boolean): string {
-  return [
-    `default-src 'self'`,
-    `script-src 'self' 'unsafe-inline'${dev ? " 'unsafe-eval'" : ""}`,
-    `style-src 'self' 'unsafe-inline'`,
-    `img-src 'self' data:`,
-    `font-src 'self'`,
-    `connect-src 'self'`,
-    `object-src 'none'`,
-    `base-uri 'self'`,
-    `form-action 'self' https://accounts.google.com`,
-    `frame-ancestors 'none'`,
-    `frame-src 'none'`,
-    `upgrade-insecure-requests`,
-  ].join("; ");
-}
+const isDev = process.env.NODE_ENV !== "production";
 
 const CONTENT_SECURITY_POLICY = buildContentSecurityPolicy(isDev);
 

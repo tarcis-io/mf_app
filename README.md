@@ -113,8 +113,10 @@ Every response carries hardening headers, all static and all from
 `Permissions-Policy`, and `Cross-Origin-Opener-Policy`. The CSP is static (no
 per-request nonce) so it works with Partial Prerendering and a CDN, which is why
 `script-src` allows `'unsafe-inline'` as a deliberate trade-off. The full
-directive-by-directive rationale lives next to the code in **`next.config.ts`**
-(the one canonical place); `proxy.ts` handles only auth route-protection.
+directive-by-directive rationale lives next to the code in
+**`lib/content-security-policy.ts`** (the one canonical place; wired into the
+response headers by `next.config.ts`); `proxy.ts` handles only auth
+route-protection.
 
 **Service-to-service calls.** In production, every request `mf_app` makes to
 `mf_service` carries a Google-signed OIDC ID token, fetched directly from the
@@ -182,7 +184,7 @@ mf_app/                                    # repository root
 ├── auth.test.ts                           # tests for the authorized + session callbacks
 ├── env.ts                                 # fail-fast validation of required env vars
 ├── env.test.ts
-├── proxy.ts                               # route protection (Next 16 proxy); CSP lives in next.config.ts
+├── proxy.ts                               # route protection (Next 16 proxy); CSP lives in lib/content-security-policy.ts
 ├── proxy.test.ts
 ├── .env.example                           # template for required env vars
 ├── DEPLOYMENT.md                          # Cloud Run deployment guide (env contract, OAuth)
@@ -194,6 +196,10 @@ mf_app/                                    # repository root
 ├── lib/
 │   ├── mf-service.ts                      # server-side mf_service client (batches, /version) + summary helper
 │   ├── mf-service.test.ts
+│   ├── user-batches.ts                    # shared loader: session → listBatches → {batches}|{error} (home + /batches cards)
+│   ├── user-batches.test.ts
+│   ├── content-security-policy.ts         # the CSP (canonical home); imported by next.config.ts, survives App Hosting's config rewrite
+│   ├── content-security-policy.test.ts
 │   ├── app-info.ts                        # app identity single source of truth (name/version/URL/repos)
 │   ├── theme.ts                           # theme preference: storage key, init script, apply/read helpers
 │   └── theme.test.ts

@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { buildContentSecurityPolicy } from "./next.config";
+import { buildContentSecurityPolicy } from "@/lib/content-security-policy";
 
 /**
- * Guards the Content-Security-Policy directives. The CSP moved out of `proxy.ts`
- * to a static header in `next.config.ts`; `proxy.test.ts` only asserts the proxy
- * no longer sets one, so without this a dropped/typo'd directive (a missing
- * `connect-src`, a loosened `object-src`) would ship invisibly. The directives
- * here are the ones DEPLOYMENT.md's troubleshooting table treats as load-bearing.
+ * Guards the Content-Security-Policy directives. The CSP is a static response
+ * header (wired up in `next.config.ts`), built by `buildContentSecurityPolicy`
+ * here; `proxy.test.ts` only asserts the proxy no longer sets one, so without
+ * this a dropped/typo'd directive (a missing `connect-src`, a loosened
+ * `object-src`) would ship invisibly. The directives here are the ones
+ * DEPLOYMENT.md's troubleshooting table treats as load-bearing.
  */
 describe("buildContentSecurityPolicy", () => {
   const parse = (csp: string) => {
