@@ -257,6 +257,13 @@ describe("AppShell", () => {
     expect(signOut.closest("form")).not.toBeNull();
   });
 
+  // NOTE: the backdrop is the one element reached by `data-testid`
+  // ("drawer-backdrop") — it's decorative/role-less/text-less, so there's no
+  // role or text to query it by. That attribute survives in test and dev but is
+  // STRIPPED from production builds by `reactRemoveProperties` (see
+  // next.config.ts), so these `getByTestId`/`queryByTestId` lookups only work
+  // because the suite runs in test mode. If the suite is ever pointed at a
+  // production build, they'd silently find nothing.
   describe("mobile drawer", () => {
     it("is closed initially (menu button reports collapsed)", () => {
       renderShell();
@@ -575,14 +582,16 @@ describe("AppShell", () => {
   });
 
   describe("header scroll shadow", () => {
-    it("raises a shadow once the main region is scrolled", () => {
+    it("raises the elevated state once the main region is scrolled", () => {
       renderShell();
 
       const header = screen.getByRole("banner");
       const main = screen.getByRole("main");
 
-      // At the top: no shadow.
-      expect(header.className).not.toContain("shadow-sm");
+      // Assert on `data-elevated` (the semantic state hook) rather than the
+      // `shadow-sm` class, so a styling-class rename can't break this test
+      // without an actual behavior change. At the top: not elevated.
+      expect(header).not.toHaveAttribute("data-elevated");
 
       // Scroll the main region.
       Object.defineProperty(main, "scrollTop", {
@@ -591,16 +600,16 @@ describe("AppShell", () => {
       });
       fireEvent.scroll(main);
 
-      expect(header.className).toContain("shadow-sm");
+      expect(header).toHaveAttribute("data-elevated");
 
-      // Back to top: shadow removed.
+      // Back to top: elevated state removed.
       Object.defineProperty(main, "scrollTop", {
         value: 0,
         configurable: true,
       });
       fireEvent.scroll(main);
 
-      expect(header.className).not.toContain("shadow-sm");
+      expect(header).not.toHaveAttribute("data-elevated");
     });
   });
 });

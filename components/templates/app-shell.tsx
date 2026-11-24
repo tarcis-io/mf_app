@@ -312,6 +312,11 @@ export default function AppShell({ title, userLabel, children }: AppShellProps) 
       {/* Right column: fixed header + scrollable main. */}
       <div className="flex min-w-0 flex-1 flex-col">
         <header
+          // `data-elevated` mirrors the scrolled state as a stable test/style
+          // hook (present only once scrolled), so tests don't have to assert on
+          // the `shadow-sm` Tailwind class — which is a styling detail that could
+          // be renamed without a behavior change.
+          data-elevated={scrolled || undefined}
           className={`flex h-16 shrink-0 items-center gap-3 border-b border-foreground/[.08] bg-background px-4 transition-shadow sm:px-6 motion-reduce:transition-none ${
             scrolled ? "shadow-sm" : ""
           }`}
