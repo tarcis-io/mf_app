@@ -12,7 +12,19 @@
  * `mf_service` has no aggregate/stats endpoint, so callers that need counts
  * fetch the user's batches with `listBatches` and reduce them with
  * `summarizeBatches`.
+ *
+ * Service-to-service authentication: in production every request also carries a
+ * Google-signed OIDC ID token in the `Authorization: Bearer` header (see
+ * {@link authHeaders}), so `mf_service` can be deployed on Cloud Run with
+ * authentication required and only accept calls from this app's service
+ * account. This is a separate concern from the per-user `X-User-Id` header:
+ * the ID token authenticates *the mf_app service* to Cloud Run's front end,
+ * while `X-User-Id` identifies *the end user* to mf_service's own logic. Token
+ * minting is skipped outside production (local dev talks to an unauthenticated
+ * mf_service), so no Google credentials are needed to run locally.
  */
+
+import { GoogleAuth, type IdTokenClient } from "google-auth-library";
 
 /**
  * The lifecycle states of a batch, from `mf_service`'s `BatchStatus` enum. The
@@ -112,6 +124,89 @@ function baseUrl(): string {
 }
 
 /**
+ * Whether to authenticate calls to mf_service with a Google ID token. Gated on
+ * production only, matching the rest of the app's `NODE_ENV` convention (the
+ * Docker image sets `NODE_ENV=production`; see env.ts / the Dockerfile). Locally
+ * mf_service is unauthenticated, so token minting is skipped and no Google
+ * credentials are needed to run `pnpm dev`.
+ */
+function isProduction(): boolean {
+  return process.env.NODE_ENV === "production";
+}
+
+/**
+ * Lazily-created Auth.js-independent Google auth handle, shared across requests.
+ * `GoogleAuth` resolves Application Default Credentials — on Cloud Run that's
+ * the metadata server, which hands out ID tokens for the attached service
+ * account. Created once (not per call) so the underlying credential and its
+ * token cache are reused.
+ */
+let googleAuth: GoogleAuth | undefined;
+
+/**
+ * Cache of ID-token clients keyed by audience. `getIdTokenClient` does real work
+ * (it primes a credential), and each client caches and auto-refreshes the token
+ * it mints, so we keep one client per audience for the process's lifetime rather
+ * than rebuilding it on every request. In practice there is a single audience
+ * (the mf_service base URL), but keying by audience keeps this correct if that
+ * ever changes.
+ */
+const idTokenClients = new Map<string, Promise<IdTokenClient>>();
+
+function idTokenClientFor(audience: string): Promise<IdTokenClient> {
+  const cached = idTokenClients.get(audience);
+  if (cached) return cached;
+
+  googleAuth ??= new GoogleAuth();
+  // Store the promise (not the resolved client) so concurrent first calls share
+  // one in-flight client creation instead of racing to build several. If it
+  // rejects, drop it from the cache so a later call can retry rather than being
+  // stuck with a permanently-failed promise.
+  const clientPromise = googleAuth
+    .getIdTokenClient(audience)
+    .catch((error: unknown) => {
+      idTokenClients.delete(audience);
+      throw error;
+    });
+  idTokenClients.set(audience, clientPromise);
+  return clientPromise;
+}
+
+/**
+ * Build the auth headers for a call to mf_service.
+ *
+ * Outside production: returns `{}` — no token, since local mf_service is
+ * unauthenticated. In production: mints a Google-signed OIDC ID token whose
+ * audience is `audience` (the mf_service base URL — exactly what Cloud Run's
+ * front end validates) and returns it as a Bearer `Authorization` header.
+ *
+ * Fails loudly: if the token can't be obtained in production this rejects, so
+ * the caller surfaces its error state rather than sending an unauthenticated
+ * request that Cloud Run would reject with a 401/403 anyway. The thrown error is
+ * wrapped with context so a misconfigured service account / metadata outage is
+ * diagnosable in the logs.
+ *
+ * @param audience the OIDC audience for the token — pass the resolved mf_service
+ *   base URL (see {@link baseUrl}).
+ */
+async function authHeaders(audience: string): Promise<Record<string, string>> {
+  if (!isProduction()) return {};
+
+  try {
+    const client = await idTokenClientFor(audience);
+    const token = await client.idTokenProvider.fetchIdToken(audience);
+    return { Authorization: `Bearer ${token}` };
+  } catch (error) {
+    throw new Error(
+      `Failed to obtain a Google ID token for mf_service (audience ${audience}). ` +
+        `On Cloud Run, ensure the service account can mint ID tokens and is ` +
+        `granted the Cloud Run Invoker role on mf_service (see DEPLOYMENT.md).`,
+      { cause: error },
+    );
+  }
+}
+
+/**
  * List the batches owned by `userId`, newest first, by calling
  * `GET {MF_SERVICE_URL}/batches`.
  *
@@ -132,8 +227,13 @@ function baseUrl(): string {
  * only applies to fetches made by the browser.
  */
 export async function listBatches(userId: string): Promise<Batch[]> {
-  const response = await fetch(`${baseUrl()}/batches`, {
+  const base = baseUrl();
+  // Resolve the auth headers first, so the fetch options (including the abort
+  // signal) are then built and passed synchronously in one tick.
+  const auth = await authHeaders(base);
+  const response = await fetch(`${base}/batches`, {
     headers: {
+      ...auth,
       "X-User-Id": userId,
       Accept: "application/json",
     },
@@ -265,9 +365,12 @@ export async function createBatch(
     form.append(field, files[key], filename);
   }
 
-  const response = await fetch(`${baseUrl()}/batches`, {
+  const base = baseUrl();
+  const auth = await authHeaders(base);
+  const response = await fetch(`${base}/batches`, {
     method: "POST",
     headers: {
+      ...auth,
       "X-User-Id": userId,
       Accept: "application/json",
       // NOTE: do not set Content-Type — the runtime sets it to
@@ -321,9 +424,12 @@ export async function renameBatch(
   id: string,
   name: string,
 ): Promise<Batch> {
-  const response = await fetch(`${baseUrl()}/batches/${encodeURIComponent(id)}`, {
+  const base = baseUrl();
+  const auth = await authHeaders(base);
+  const response = await fetch(`${base}/batches/${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: {
+      ...auth,
       "X-User-Id": userId,
       Accept: "application/json",
       "Content-Type": "application/json",
@@ -358,9 +464,12 @@ export async function renameBatch(
  * and a generic `Error` on any other non-2xx. Capped at `REQUEST_TIMEOUT_MS`.
  */
 export async function deleteBatch(userId: string, id: string): Promise<void> {
-  const response = await fetch(`${baseUrl()}/batches/${encodeURIComponent(id)}`, {
+  const base = baseUrl();
+  const auth = await authHeaders(base);
+  const response = await fetch(`${base}/batches/${encodeURIComponent(id)}`, {
     method: "DELETE",
     headers: {
+      ...auth,
       "X-User-Id": userId,
       Accept: "application/json",
     },
@@ -402,8 +511,13 @@ export interface ServiceInfo {
  * rather than failing the page.
  */
 export async function getServiceInfo(): Promise<ServiceInfo> {
-  const response = await fetch(`${baseUrl()}/version`, {
-    headers: { Accept: "application/json" },
+  const base = baseUrl();
+  const auth = await authHeaders(base);
+  const response = await fetch(`${base}/version`, {
+    headers: {
+      ...auth,
+      Accept: "application/json",
+    },
     cache: "no-store",
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });

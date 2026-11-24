@@ -1,5 +1,26 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// Mock google-auth-library so the service-to-service auth path can be driven
+// without real Google credentials or the metadata server. `fetchIdToken`
+// returns a canned token; `getIdTokenClient` is a spy so client reuse (caching)
+// can be asserted. Tests reconfigure these per case (e.g. make fetchIdToken
+// reject). Hoisted so the mock is wired before `./mf-service` is imported.
+const { fetchIdToken, getIdTokenClient, GoogleAuth } = vi.hoisted(() => {
+  const fetchIdToken = vi.fn(async () => "fake-id-token");
+  const getIdTokenClient = vi.fn(async () => ({
+    idTokenProvider: { fetchIdToken },
+  }));
+  // Must be a regular function (not an arrow): the code calls `new GoogleAuth()`,
+  // and arrow functions aren't constructable. Returning an object from a
+  // constructor makes `new` yield that object, so `new GoogleAuth()` gives
+  // `{ getIdTokenClient }`. Kept as a vi.fn so call counts can be asserted.
+  const GoogleAuth = vi.fn(function () {
+    return { getIdTokenClient };
+  });
+  return { fetchIdToken, getIdTokenClient, GoogleAuth };
+});
+vi.mock("google-auth-library", () => ({ GoogleAuth }));
+
 import {
   BATCH_FILE_FIELDS,
   BATCH_STATUSES,
@@ -119,23 +140,29 @@ describe("listBatches", () => {
       .spyOn(AbortSignal, "timeout")
       .mockReturnValue(controller.signal);
 
-    // A hung backend: fetch only settles if its signal aborts.
+    // A hung backend: fetch only settles if its signal aborts. Handle both
+    // orderings — the signal may already be aborted by the time fetch runs (the
+    // request builds behind an `await`, so the test's synchronous abort() can
+    // land first) or abort later — mirroring how a real fetch rejects on a
+    // pre-aborted signal immediately and on a live one when it fires.
+    const abortError = () =>
+      new DOMException("The operation timed out.", "TimeoutError");
     vi.spyOn(globalThis, "fetch").mockImplementation(
       (_input, init) =>
         new Promise((_resolve, reject) => {
-          init?.signal?.addEventListener("abort", () =>
-            reject(
-              new DOMException("The operation timed out.", "TimeoutError"),
-            ),
-          );
+          if (init?.signal?.aborted) {
+            reject(abortError());
+            return;
+          }
+          init?.signal?.addEventListener("abort", () => reject(abortError()));
         }),
     );
 
+    // Fire the "timeout" before awaiting: whether this lands before or after
+    // fetch is reached, the mock above rejects.
     const pending = listBatches("user-123");
-    const assertion = expect(pending).rejects.toThrow(/timed out/i);
-    // Fire the "timeout".
     controller.abort();
-    await assertion;
+    await expect(pending).rejects.toThrow(/timed out/i);
 
     expect(timeoutSpy).toHaveBeenCalledWith(5000);
   });
@@ -676,5 +703,146 @@ describe("deleteBatch", () => {
 
     expect(timeoutSpy).toHaveBeenCalledWith(5000);
     expect(fetchMock.mock.calls[0]![1]?.signal).toBeInstanceOf(AbortSignal);
+  });
+});
+
+describe("service-to-service auth (Google ID token)", () => {
+  const BASE = "https://mf-service.massflow.ai";
+
+  // These tests toggle NODE_ENV and rely on the module-level ID-token-client
+  // cache in mf-service.ts. Reset the module registry before each so every test
+  // starts with an empty cache and a clean view of the google-auth mocks, then
+  // import a fresh copy of the module (the google-auth-library mock is hoisted,
+  // so it re-applies to the fresh import). Mirrors the resetModules pattern in
+  // auth.test.ts.
+  async function freshModule() {
+    vi.resetModules();
+    return import("./mf-service");
+  }
+
+  beforeEach(() => {
+    vi.stubEnv("MF_SERVICE_URL", BASE);
+    // Re-establish the full mock implementations each test. `vi.restoreAllMocks`
+    // in afterEach (needed to undo the per-test `vi.spyOn(fetch)`) also strips
+    // these hoisted mocks' implementations, so set all three here rather than
+    // relying on the one-time `vi.hoisted` defaults surviving between tests.
+    fetchIdToken.mockReset().mockResolvedValue("fake-id-token");
+    getIdTokenClient
+      .mockReset()
+      .mockResolvedValue({ idTokenProvider: { fetchIdToken } });
+    GoogleAuth.mockReset().mockImplementation(function () {
+      return { getIdTokenClient };
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+    vi.resetModules();
+  });
+
+  it("does NOT attach an Authorization header outside production (and never touches Google)", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    const { listBatches } = await freshModule();
+
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("[]", { status: 200 }));
+
+    await listBatches("user-123");
+
+    const headers = new Headers(fetchMock.mock.calls[0]![1]?.headers);
+    expect(headers.get("Authorization")).toBeNull();
+    // The whole google-auth machinery must stay dormant locally.
+    expect(GoogleAuth).not.toHaveBeenCalled();
+    expect(getIdTokenClient).not.toHaveBeenCalled();
+    expect(fetchIdToken).not.toHaveBeenCalled();
+  });
+
+  it("attaches a Bearer ID token in production, with the mf_service base URL as the audience", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const { listBatches } = await freshModule();
+
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("[]", { status: 200 }));
+
+    await listBatches("user-123");
+
+    const headers = new Headers(fetchMock.mock.calls[0]![1]?.headers);
+    expect(headers.get("Authorization")).toBe("Bearer fake-id-token");
+    // Both the client and the token must be minted for the base URL audience.
+    expect(getIdTokenClient).toHaveBeenCalledWith(BASE);
+    expect(fetchIdToken).toHaveBeenCalledWith(BASE);
+    // The per-user header still rides alongside the service token.
+    expect(headers.get("X-User-Id")).toBe("user-123");
+  });
+
+  it("attaches the token on every endpoint (createBatch / getServiceInfo too)", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const { createBatch, getServiceInfo } = await freshModule();
+
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(JSON.stringify(makeBatch()), { status: 201 }),
+      );
+
+    await createBatch("user-123", "Spring run", makeFiles());
+    expect(
+      new Headers(fetchMock.mock.calls[0]![1]?.headers).get("Authorization"),
+    ).toBe("Bearer fake-id-token");
+
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          name: "mf_service",
+          description: "d",
+          version: "0.1.0",
+          engine_version: "0.1.0",
+        }),
+        { status: 200 },
+      ),
+    );
+    await getServiceInfo();
+    expect(
+      new Headers(fetchMock.mock.calls[1]![1]?.headers).get("Authorization"),
+    ).toBe("Bearer fake-id-token");
+  });
+
+  it("fails the request (and doesn't fetch) when the token can't be minted in production", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    fetchIdToken.mockRejectedValue(new Error("metadata server unreachable"));
+    const { listBatches } = await freshModule();
+
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+
+    const err = await listBatches("user-123").catch((e) => e);
+    expect(err).toBeInstanceOf(Error);
+    // The error is wrapped with actionable context and preserves the cause.
+    expect((err as Error).message).toMatch(/Google ID token/i);
+    expect((err as Error).cause).toBeInstanceOf(Error);
+    // We must not send an unauthenticated request that Cloud Run would reject.
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("reuses one ID-token client across calls (built once, not per request)", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const { listBatches } = await freshModule();
+
+    // A fresh Response per call — a single Response body can only be read once,
+    // and this test makes three calls.
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () => new Response("[]", { status: 200 }),
+    );
+
+    await listBatches("user-123");
+    await listBatches("user-123");
+    await listBatches("user-123");
+
+    // The client is cached by audience, so it's created once and only the token
+    // is re-fetched (the library caches/refreshes that itself).
+    expect(getIdTokenClient).toHaveBeenCalledTimes(1);
+    expect(fetchIdToken).toHaveBeenCalledTimes(3);
   });
 });

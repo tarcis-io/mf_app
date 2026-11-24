@@ -120,6 +120,17 @@ allows Google's OAuth origin for sign-in. `proxy.ts` handles only auth
 route-protection. When `mf_service` is wired up, add its origin to the CSP
 `connect-src` directive in `next.config.ts`.
 
+**Service-to-service calls.** In production, every request `mf_app` makes to
+`mf_service` carries a Google-signed OIDC ID token (via `google-auth-library`,
+minted from the Cloud Run metadata server for mf-app's service account, with the
+audience set to `MF_SERVICE_URL`). This lets `mf_service` run privately and
+accept calls only from mf-app — see `lib/mf-service.ts` and
+[`DEPLOYMENT.md`](./DEPLOYMENT.md#service-to-service-authentication) (including
+the `roles/run.invoker` grant). It's separate from the per-user `X-User-Id`
+header: the token authenticates the service, `X-User-Id` identifies the end
+user. Token minting is skipped outside production, so local dev needs no Google
+credentials for it.
+
 ## Pages
 
 | Path          | Description                                               | Access        |
@@ -263,7 +274,9 @@ through a small client in `lib/mf-service.ts`, pointed at the base URL in the
 `MF_SERVICE_URL` environment variable. Each call identifies the end user with an
 `X-User-Id` request header carrying the Google account id (the OAuth `sub`,
 surfaced as `session.user.id`; see `auth.ts`), which `mf_service` uses to scope
-every batch to its owner. The full batch surface is wired up: the home page's
+every batch to its owner. In production each call additionally carries a
+Google-signed ID token so `mf_service` can run privately (see
+[Security](#security)). The full batch surface is wired up: the home page's
 **Batches** card shows the total plus a per-status breakdown, and the
 **/batches** page lists the signed-in user's batches and lets them create a
 batch (uploading the five required files via `POST /batches`), rename, and

@@ -112,11 +112,48 @@ gcloud run services update mf-app --region "$REGION" \
 
 Then add `$URL/api/auth/callback/google` to the OAuth client's Authorized redirect URIs (step 2 of [Google OAuth setup](#google-oauth-setup)).
 
-### 4. Verify
+### 4. Allow mf-app to call mf-service (service-to-service auth)
+
+In production, `mf_app` attaches a Google-signed **OIDC ID token** to every
+request it makes to `mf_service` (audience = `MF_SERVICE_URL`; see
+[Service-to-service authentication](#service-to-service-authentication) and
+`lib/mf-service.ts`). This lets `mf_service` be deployed **privately** — without
+`--allow-unauthenticated` — and accept calls only from mf-app's service account.
+
+Grant mf-app's runtime service account the **Cloud Run Invoker** role on the
+`mf-service` service (replace the account with mf-app's actual runtime SA — by
+default the project's Compute Engine default SA, or a dedicated one if you
+configured it):
+
+```bash
+# mf-app's runtime service account (the identity its container runs as).
+MF_APP_SA="$(gcloud run services describe mf-app --region "$REGION" \
+  --format='value(spec.template.spec.serviceAccountName)')"
+
+gcloud run services add-iam-policy-binding mf-service \
+  --region "$REGION" \
+  --member "serviceAccount:${MF_APP_SA}" \
+  --role roles/run.invoker
+```
+
+Notes:
+
+- The token's audience **must** be the URL mf-app calls — i.e. exactly
+  `MF_SERVICE_URL`. If `mf_service` sits behind a custom domain, set
+  `MF_SERVICE_URL` to that same domain so the audience matches.
+- No credentials or keys are configured for this: on Cloud Run the token is
+  minted from the metadata server for the attached service account. Locally the
+  token is skipped entirely (mf-app talks to an unauthenticated local
+  `mf_service`), so nothing extra is needed for `pnpm dev`.
+- If the binding is missing, mf-app's calls get a `403` from mf_service's front
+  end and the Batches card / About version show their error state.
+
+### 5. Verify
 
 - Visit the service URL → you should be redirected to `/login`.
 - "Continue with Google" → Google consent → back to `/`.
 - Confirm the response carries the security headers (`Content-Security-Policy`, `Strict-Transport-Security`, etc. — see [Security headers](#security-headers)).
+- The home **Batches** card and the **About** version load (not their error state) — this confirms mf-app's ID token is accepted by `mf_service`.
 
 ## Security headers
 
@@ -126,13 +163,44 @@ The CSP is **static** (no per-request nonce), which is what lets it work with `c
 
 The directive-by-directive rationale (and the note on adding `mf_service`'s origin to `connect-src` once the API is wired up) lives next to the code in `next.config.ts`. `proxy.ts` now only does auth route-protection — it sets no headers.
 
+## Service-to-service authentication
+
+`mf_app` calls `mf_service` **server-side** (never from the browser), and in
+production authenticates those calls with a Google-signed **OIDC ID token**
+rather than leaving `mf_service` open. The token is obtained with
+[`google-auth-library`](https://github.com/googleapis/google-auth-library-nodejs):
+on Cloud Run it's minted from the metadata server for mf-app's attached service
+account, with the token **audience** set to `MF_SERVICE_URL`. mf-app attaches it
+as `Authorization: Bearer <token>`; Cloud Run's front end validates it before the
+request ever reaches `mf_service`. (See `lib/mf-service.ts`.)
+
+This is distinct from the per-user `X-User-Id` header mf-app also sends: the ID
+token authenticates **the mf-app service** to Cloud Run, while `X-User-Id`
+identifies **the end user** (the Google `sub`) to mf_service's own logic. Both
+travel on the same request.
+
+Operational requirements:
+
+- Deploy `mf_service` privately (no `--allow-unauthenticated`) and grant mf-app's
+  runtime service account `roles/run.invoker` on it — see
+  [step 4](#4-allow-mf-app-to-call-mf-service-service-to-service-auth) above.
+- Keep `MF_SERVICE_URL` equal to the host mf-app actually calls, because that
+  value **is** the token audience; an audience mismatch is rejected.
+- **Local dev needs none of this.** The token is minted only when
+  `NODE_ENV=production` (which the Docker image sets); locally mf-app talks to an
+  unauthenticated `mf_service`, so no Google credentials are required. If the
+  token can't be obtained in production, mf-app fails the call loudly (logged
+  server-side) rather than sending an unauthenticated request.
+
 ## Troubleshooting
 
-| Symptom                                                                          | Likely cause                                   | Fix                                                                                                                                                                      |
-| -------------------------------------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `UntrustedHost` error on sign-in                                                 | `AUTH_TRUST_HOST` not set                      | Set `AUTH_TRUST_HOST=true`.                                                                                                                                              |
-| `redirect_uri_mismatch` from Google                                              | Callback URI not registered / `AUTH_URL` wrong | Register `https://<origin>/api/auth/callback/google`; set `AUTH_URL` to the exact origin.                                                                                |
-| Container crashes on startup with "Missing required environment variable(s)"     | A required secret/env is absent                | Provide the listed variables (see [Environment variables](#environment-variables)).                                                                                      |
-| Blank page / scripts blocked, console shows `script-src` CSP violations | `'unsafe-inline'` was removed from `script-src` | Restore `script-src 'self' 'unsafe-inline'` in `next.config.ts`. Next emits inline streaming scripts that a static CSP can't nonce or hash-list, so this is required by design here — see the CSP comment in `next.config.ts`. |
-| `form-action` CSP violation on "Continue with Google" | Google's OAuth origin isn't allowed | Keep `https://accounts.google.com` in the `form-action` directive in `next.config.ts` (alongside `'self'`). |
-| Styles missing / page renders unstyled, console shows `style-src` CSP violations | `'unsafe-inline'` was removed from `style-src` | Restore `style-src 'self' 'unsafe-inline'` in `next.config.ts`. Next/React inject inline styles, so this is required by design — don't "tighten" it. |
+| Symptom                                                                                      | Likely cause                                                                             | Fix                                                                                                                                                                                                                            |
+| -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `UntrustedHost` error on sign-in                                                             | `AUTH_TRUST_HOST` not set                                                                | Set `AUTH_TRUST_HOST=true`.                                                                                                                                                                                                    |
+| `redirect_uri_mismatch` from Google                                                          | Callback URI not registered / `AUTH_URL` wrong                                           | Register `https://<origin>/api/auth/callback/google`; set `AUTH_URL` to the exact origin.                                                                                                                                      |
+| Container crashes on startup with "Missing required environment variable(s)"                 | A required secret/env is absent                                                          | Provide the listed variables (see [Environment variables](#environment-variables)).                                                                                                                                            |
+| Batches card / About version show their error state in prod; `mf_service` logs a `401`/`403` | mf-app's service account lacks the Invoker role, or the token audience ≠ the called host | Grant `roles/run.invoker` on `mf-service` to mf-app's runtime SA ([step 4](#4-allow-mf-app-to-call-mf-service-service-to-service-auth)); ensure `MF_SERVICE_URL` is exactly the host mf-app calls (it's the token audience).   |
+| Prod logs show "Failed to obtain a Google ID token for mf_service"                           | The metadata server is unreachable or the runtime SA can't mint ID tokens                | Confirm the service runs on Cloud Run with a service account attached; mf-app mints the token from the metadata server (see [Service-to-service authentication](#service-to-service-authentication)).                          |
+| Blank page / scripts blocked, console shows `script-src` CSP violations                      | `'unsafe-inline'` was removed from `script-src`                                          | Restore `script-src 'self' 'unsafe-inline'` in `next.config.ts`. Next emits inline streaming scripts that a static CSP can't nonce or hash-list, so this is required by design here — see the CSP comment in `next.config.ts`. |
+| `form-action` CSP violation on "Continue with Google"                                        | Google's OAuth origin isn't allowed                                                      | Keep `https://accounts.google.com` in the `form-action` directive in `next.config.ts` (alongside `'self'`).                                                                                                                    |
+| Styles missing / page renders unstyled, console shows `style-src` CSP violations             | `'unsafe-inline'` was removed from `style-src`                                           | Restore `style-src 'self' 'unsafe-inline'` in `next.config.ts`. Next/React inject inline styles, so this is required by design — don't "tighten" it.                                                                           |
