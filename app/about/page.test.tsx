@@ -45,7 +45,7 @@ vi.mock("next/image", () => ({
 const { getServiceInfo } = vi.hoisted(() => ({ getServiceInfo: vi.fn() }));
 vi.mock("@/lib/mf-service", () => ({ getServiceInfo }));
 
-import About from "./page";
+import About, { ServiceCards } from "./page";
 
 /** The three cards, each a labelled landmark region keyed by its title. */
 function card(name: "Application" | "Service" | "Engine") {
@@ -189,10 +189,41 @@ describe("About page", () => {
     });
   });
 
-  // Note: the mf_service/mf_engine version *values* resolve from an async Server
-  // Component (`await getServiceInfo()`) inside a Suspense boundary. React
-  // Testing Library's client renderer can't resolve that through Suspense in
-  // jsdom, so the streamed values (and the "unavailable" fallback on failure)
-  // aren't assertable here — that's an integration/e2e concern. The fetch +
-  // error behavior is covered in `lib/mf-service.test.ts`.
+});
+
+// The version *values* resolve from an async Server Component
+// (`await getServiceInfo()`) inside a Suspense boundary, which RTL can't flush
+// through <About> in jsdom. So render ServiceCards directly (awaited) to assert
+// the resolved versions and the "unavailable" fallback when the fetch fails.
+describe("ServiceCards", () => {
+  it("renders the service and engine versions from getServiceInfo", async () => {
+    getServiceInfo.mockResolvedValue({
+      name: "mf_service",
+      description: "svc",
+      version: "9.9.9",
+      engine_version: "8.8.8",
+    });
+
+    render(await ServiceCards());
+
+    expect(value(card("Service"), "Version")).toHaveTextContent("v9.9.9");
+    expect(value(card("Engine"), "Version")).toHaveTextContent("v8.8.8");
+    expect(screen.queryByText("unavailable")).toBeNull();
+  });
+
+  it("shows 'unavailable' for both versions when getServiceInfo fails", async () => {
+    // A backend hiccup must degrade only these two version values, not throw.
+    getServiceInfo.mockRejectedValue(new Error("mf_service down"));
+    // The component logs the failure server-side; silence it in the test.
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    render(await ServiceCards());
+
+    expect(value(card("Service"), "Version")).toHaveTextContent("unavailable");
+    expect(value(card("Engine"), "Version")).toHaveTextContent("unavailable");
+    // The cards themselves still render (names + repos), so only the version
+    // degrades — the page doesn't fail.
+    expect(value(card("Service"), "Name")).toHaveTextContent("mf_service");
+    expect(errorSpy).toHaveBeenCalled();
+  });
 });

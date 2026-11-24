@@ -63,9 +63,12 @@ function EditBatchForm({
   onDone: () => void;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState(batch.name);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  // Set when the server rejects the name as already taken (409); cleared on edit.
+  const [nameInvalid, setNameInvalid] = useState(false);
   const nameId = useId();
   const errorId = useId();
 
@@ -87,6 +90,12 @@ function EditBatchForm({
           setError(
             result.error ?? "Couldn't rename the batch. Please try again.",
           );
+          // A duplicate name is a field-level problem: flag the name field and
+          // focus it so the user can correct just that.
+          if (result.duplicate) {
+            setNameInvalid(true);
+            nameRef.current?.focus();
+          }
         }
       });
     },
@@ -114,6 +123,7 @@ function EditBatchForm({
             Name
           </label>
           <input
+            ref={nameRef}
             id={nameId}
             name="name"
             type="text"
@@ -124,11 +134,17 @@ function EditBatchForm({
             // assistive tech ties the message to this input (the banner also has
             // role="alert", which announces it on appearance).
             aria-describedby={error ? errorId : undefined}
+            aria-invalid={nameInvalid || undefined}
             onChange={(event) => {
               setError(null);
+              setNameInvalid(false);
               setName(event.target.value);
             }}
-            className="h-10 w-full rounded-lg border border-foreground/15 bg-background px-3 text-sm text-foreground outline-none transition-colors placeholder:text-foreground/40 hover:border-foreground/25 focus-visible:border-foreground/25 focus-visible:ring-2 focus-visible:ring-primary"
+            className={`h-10 w-full rounded-lg border bg-background px-3 text-sm text-foreground outline-none transition-colors placeholder:text-foreground/40 focus-visible:ring-2 focus-visible:ring-primary ${
+              nameInvalid
+                ? "border-[#ef4444] focus-visible:border-[#ef4444]"
+                : "border-foreground/15 hover:border-foreground/25 focus-visible:border-foreground/25"
+            }`}
           />
         </div>
       </div>

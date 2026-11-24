@@ -88,7 +88,7 @@ describe("EditBatchDialog", () => {
     submitForm();
 
     await vi.waitFor(() => expect(renameBatchAction).toHaveBeenCalledOnce());
-    const [id, formData] = renameBatchAction.mock.calls[0];
+    const [id, formData] = renameBatchAction.mock.calls[0]!;
     expect(id).toBe("batch-1");
     expect((formData as FormData).get("name")).toBe("Renamed");
 
@@ -106,11 +106,23 @@ describe("EditBatchDialog", () => {
     fireEvent.change(screen.getByLabelText("Name"), {
       target: { value: "Renamed" },
     });
+    // Move focus off the name field (it autofocuses on mount) so the assertion
+    // below genuinely verifies the dialog returns focus to it on a duplicate.
+    const cancel = screen.getByRole("button", { name: "Cancel" });
+    cancel.focus();
+    expect(cancel).toHaveFocus();
     submitForm();
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent(/already exists/i);
     expect(dialogEl().hasAttribute("open")).toBe(true);
+    // Duplicate is a field-level problem: name marked invalid and focused.
+    const nameInput = screen.getByLabelText("Name");
+    expect(nameInput).toHaveAttribute("aria-invalid", "true");
+    expect(nameInput).toHaveFocus();
+    // Editing clears the invalid marker.
+    fireEvent.change(nameInput, { target: { value: "Renamed again" } });
+    expect(nameInput).not.toHaveAttribute("aria-invalid");
   });
 
   it("shows a generic error banner on a non-duplicate failure", async () => {

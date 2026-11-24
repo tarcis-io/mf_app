@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Home composes the shared LoggedInTemplate (an async Server Component that
 // reads the session). Stub it with a minimal shell that surfaces the props so
@@ -32,10 +32,12 @@ vi.mock("@/components/templates/logged-in-template", () => ({
 // Home now reads the session (via its GreetingTitle) for the header greeting.
 // Stub `@/auth` so importing Home doesn't spin up the Auth.js runtime; the
 // greeting's resolved text streams from an async Server Component through
-// Suspense, which RTL can't resolve in jsdom (see the note at the bottom).
-vi.mock("@/auth", () => ({
-  auth: vi.fn().mockResolvedValue({ user: { name: "Ada Lovelace" } }),
-}));
+// Suspense, which RTL can't resolve in jsdom. `authMock` is hoisted so the
+// GreetingTitle tests can shape the session per case. (It's an untyped spy
+// because the real `auth` is overloaded — session reader AND middleware — so a
+// typed `vi.mocked` would resolve to the wrong overload.)
+const { authMock } = vi.hoisted(() => ({ authMock: vi.fn() }));
+vi.mock("@/auth", () => ({ auth: authMock }));
 
 // BatchesCard is an async Server Component that reads the session and calls
 // mf_service; importing it would pull in the full Auth.js runtime. Stub it so
@@ -44,7 +46,13 @@ vi.mock("@/components/batches-card", () => ({
   default: () => <div data-testid="batches-card" />,
 }));
 
-import Home from "./page";
+import Home, { GreetingTitle } from "./page";
+
+beforeEach(() => {
+  // Default session for the Home-wiring tests; GreetingTitle cases override it.
+  authMock.mockReset();
+  authMock.mockResolvedValue({ user: { name: "Ada Lovelace" } });
+});
 
 describe("Home page", () => {
   it("renders inside the shared LoggedInTemplate shell", () => {
@@ -63,7 +71,7 @@ describe("Home page", () => {
     // The title is the personalized "Hello, {name}" greeting wrapped in its own
     // Suspense boundary, so it's a React node rather than the old static "Home"
     // string. Assert a node is passed (the resolved text is covered below).
-    const { title } = templateSpy.mock.calls[0][0];
+    const { title } = templateSpy.mock.calls[0]![0];
     expect(title).toBeDefined();
     expect(typeof title).not.toBe("string");
   });
@@ -87,11 +95,50 @@ describe("Home page", () => {
 
     expect(screen.getByTestId("batches-card")).toBeInTheDocument();
   });
+});
 
-  // Note: the greeting text ("Hello, Ada Lovelace", or the email fallback)
-  // resolves from an async Server Component (`await auth()`) inside a Suspense
-  // boundary. React Testing Library's client renderer can't resolve that through
-  // Suspense in jsdom, so the streamed greeting isn't assertable here — it's an
-  // integration/e2e concern. The name/email resolution mirrors `UserLabel`,
-  // whose rendering is covered in `components/user-label.test.tsx`.
+// The greeting resolves from an async Server Component (`await auth()`) inside a
+// Suspense boundary, which RTL can't flush through <Home> in jsdom. So render
+// GreetingTitle directly (awaited) — the same technique BatchesCard's test uses
+// — to assert the actual resolved greeting and its fallbacks.
+describe("GreetingTitle", () => {
+  it("greets the signed-in user by name", async () => {
+    authMock.mockResolvedValue({
+      user: { name: "Ada Lovelace", email: "ada@massflow.ai" },
+      expires: "",
+    });
+
+    render(await GreetingTitle());
+
+    expect(screen.getByText("Hello, Ada Lovelace")).toBeInTheDocument();
+  });
+
+  it("falls back to the email when there's no name", async () => {
+    authMock.mockResolvedValue({
+      user: { email: "ada@massflow.ai" },
+      expires: "",
+    });
+
+    render(await GreetingTitle());
+
+    expect(screen.getByText("Hello, ada@massflow.ai")).toBeInTheDocument();
+  });
+
+  it("falls back to 'Home' when the user has neither name nor email", async () => {
+    authMock.mockResolvedValue({ user: {}, expires: "" });
+
+    render(await GreetingTitle());
+
+    expect(screen.getByText("Home")).toBeInTheDocument();
+    // Never render a dangling "Hello, " with no name.
+    expect(screen.queryByText(/hello,/i)).toBeNull();
+  });
+
+  it("falls back to 'Home' when there is no session at all", async () => {
+    authMock.mockResolvedValue(null);
+
+    render(await GreetingTitle());
+
+    expect(screen.getByText("Home")).toBeInTheDocument();
+  });
 });

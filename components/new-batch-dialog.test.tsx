@@ -214,7 +214,7 @@ describe("NewBatchDialog", () => {
       // The action is called with the form's FormData (name + 5 files). It runs
       // inside a transition, so await the call rather than asserting synchronously.
       await vi.waitFor(() => expect(createBatchAction).toHaveBeenCalledOnce());
-      const form = createBatchAction.mock.calls[0][0] as FormData;
+      const form = createBatchAction.mock.calls[0]![0] as FormData;
       expect(form.get("name")).toBe("Spring run");
 
       // The transition resolves and the dialog closes.
@@ -237,6 +237,30 @@ describe("NewBatchDialog", () => {
       expect(alert).toHaveTextContent(/already exists/i);
       // It must remain open so the user can fix the name.
       expect(dialogEl().hasAttribute("open")).toBe(true);
+      // A duplicate is a field-level problem: the name is marked invalid and
+      // focused so the user is taken straight to the one thing to fix.
+      const nameInput = screen.getByLabelText("Name");
+      expect(nameInput).toHaveAttribute("aria-invalid", "true");
+      expect(nameInput).toHaveFocus();
+    });
+
+    it("clears the invalid state on the name field once the user edits it", async () => {
+      createBatchAction.mockResolvedValue({
+        ok: false,
+        duplicate: true,
+        error: 'A batch named "Spring run" already exists.',
+      });
+      render(<NewBatchDialog />);
+      openDialog();
+      fillValidForm();
+      submitForm();
+
+      const nameInput = await screen.findByLabelText("Name");
+      expect(nameInput).toHaveAttribute("aria-invalid", "true");
+
+      // Editing the name clears the invalid marker (the user is fixing it).
+      fireEvent.change(nameInput, { target: { value: "Spring run 2" } });
+      expect(nameInput).not.toHaveAttribute("aria-invalid");
     });
 
     it("shows a generic error banner on a non-duplicate failure", async () => {
@@ -254,6 +278,8 @@ describe("NewBatchDialog", () => {
       const alert = await screen.findByRole("alert");
       expect(alert).toHaveTextContent(/couldn't create the batch/i);
       expect(dialogEl().hasAttribute("open")).toBe(true);
+      // A generic failure is not a name problem, so the field isn't flagged.
+      expect(screen.getByLabelText("Name")).not.toHaveAttribute("aria-invalid");
     });
   });
 

@@ -68,7 +68,7 @@ describe("createBatchAction", () => {
 
     expect(result.ok).toBe(true);
     expect(createBatch).toHaveBeenCalledOnce();
-    const [userId, name, files] = createBatch.mock.calls[0];
+    const [userId, name, files] = createBatch.mock.calls[0]!;
     expect(userId).toBe("google-sub-xyz");
     expect(name).toBe("Spring run");
     // Every required file key is present in the files object handed to createBatch.
@@ -86,7 +86,7 @@ describe("createBatchAction", () => {
   it("trims the submitted name before sending", async () => {
     await createBatchAction(makeFormData({ name: "  Spring run  " }));
 
-    expect(createBatch.mock.calls[0][1]).toBe("Spring run");
+    expect(createBatch.mock.calls[0]![1]).toBe("Spring run");
   });
 
   it("returns a duplicate result (no throw) when the name is taken", async () => {
@@ -158,7 +158,7 @@ describe("renameBatchAction", () => {
 
   it("trims the name before sending", async () => {
     await renameBatchAction("batch-1", nameForm("  Renamed  "));
-    expect(renameBatch.mock.calls[0][2]).toBe("Renamed");
+    expect(renameBatch.mock.calls[0]![2]).toBe("Renamed");
   });
 
   it("revalidates the batches page on success", async () => {

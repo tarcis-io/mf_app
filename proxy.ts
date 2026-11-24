@@ -131,6 +131,13 @@ export const config = {
 /**
  * The matcher pattern (see `config` above), re-exported so the exact string can
  * be unit-tested directly. Derived from `config` rather than duplicated, so the
- * test guards the literal the framework actually uses.
+ * test guards the literal the framework actually uses. `config.matcher` is a
+ * non-empty literal array, so `[0]` is always present; the check keeps the
+ * export typed as `string` (not `string | undefined`) and fails loudly if the
+ * matcher is ever emptied.
  */
-export const MATCHER_PATTERN = config.matcher[0];
+const [matcherPattern] = config.matcher;
+if (matcherPattern === undefined) {
+  throw new Error("proxy config.matcher must contain at least one pattern");
+}
+export const MATCHER_PATTERN: string = matcherPattern;

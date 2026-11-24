@@ -108,6 +108,9 @@ export default function NeuralNetworkBackground() {
         for (let j = i + 1; j < nodes.length; j++) {
           const a = nodes[i];
           const b = nodes[j];
+          // Both indices are in-bounds (loops are bounded by `nodes.length`);
+          // the guard is only here to satisfy noUncheckedIndexedAccess.
+          if (!a || !b) continue;
           const dx = a.x - b.x;
           const dy = a.y - b.y;
           const distance = Math.sqrt(dx * dx + dy * dy);

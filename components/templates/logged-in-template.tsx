@@ -63,9 +63,10 @@ export default function LoggedInTemplate({
 /**
  * Reads the session and renders the signed-in user's label. Split out so the
  * `auth()` call is the only thing inside the Suspense boundary — keeping the
- * rest of the shell statically prerenderable.
+ * rest of the shell statically prerenderable. Exported for direct unit testing
+ * (its resolved output can't be asserted through the Suspense boundary in jsdom).
  */
-async function UserLabelSlot() {
+export async function UserLabelSlot() {
   const session = await auth();
   return <UserLabel user={session?.user} />;
 }

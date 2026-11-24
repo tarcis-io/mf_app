@@ -1,7 +1,7 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
 
 import { auth } from "@/auth";
+import Card from "@/components/card";
 import BatchesIcon from "@/components/batches-icon";
 import { STATUS_COLORS, STATUS_LABELS } from "@/components/batch-status";
 import {
@@ -28,7 +28,26 @@ import {
  * `<Suspense>` boundary (see `app/page.tsx`) to stay prerenderable under PPR.
  */
 export default async function BatchesCard() {
-  return <Card>{await BatchesContent()}</Card>;
+  return (
+    <Card
+      id="batches-card-title"
+      title="Batches"
+      icon={<BatchesIcon className="h-4 w-4" />}
+      footer={
+        <Link
+          href="/batches"
+          // Full-width on mobile; shrinks to its content (fixed/intrinsic size,
+          // left-aligned in this text-left card) on lg+.
+          className="mt-6 flex h-10 w-full items-center justify-center gap-1.5 rounded-lg border border-foreground/15 px-4 text-sm font-medium text-foreground/80 outline-none transition-colors hover:border-foreground/25 hover:bg-foreground/[.04] hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary motion-reduce:transition-none lg:inline-flex lg:w-auto"
+        >
+          View all batches
+          <span aria-hidden="true">&rarr;</span>
+        </Link>
+      }
+    >
+      {await BatchesContent()}
+    </Card>
+  );
 }
 
 /** Fetch + render the body; isolated so the fetch is the only thing that can throw. */
@@ -91,38 +110,6 @@ async function BatchesContent() {
         ))}
       </dl>
     </>
-  );
-}
-
-/**
- * The card shell: title (with the shared batches icon) + framed body + a link
- * to the full Batches page. Shared by the data and error states, so the link
- * out is always available even when the summary can't load.
- */
-function Card({ children }: { children: ReactNode }) {
-  return (
-    <section
-      aria-labelledby="batches-card-title"
-      className="w-full rounded-xl border border-foreground/[.08] bg-background p-6 text-left shadow-sm"
-    >
-      <h2
-        id="batches-card-title"
-        className="flex items-center gap-2 text-sm font-semibold tracking-tight text-foreground"
-      >
-        <BatchesIcon className="h-4 w-4 shrink-0 text-primary" />
-        Batches
-      </h2>
-      <div className="mt-4">{children}</div>
-      <Link
-        href="/batches"
-        // Full-width on mobile; shrinks to its content (fixed/intrinsic size,
-        // left-aligned in this text-left card) on lg+.
-        className="mt-6 flex h-10 w-full items-center justify-center gap-1.5 rounded-lg border border-foreground/15 px-4 text-sm font-medium text-foreground/80 outline-none transition-colors hover:border-foreground/25 hover:bg-foreground/[.04] hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary motion-reduce:transition-none lg:inline-flex lg:w-auto"
-      >
-        View all batches
-        <span aria-hidden="true">&rarr;</span>
-      </Link>
-    </section>
   );
 }
 

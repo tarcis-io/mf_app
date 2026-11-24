@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { Suspense, type ReactNode } from "react";
 
+import Card from "@/components/card";
 import LoggedInTemplate from "@/components/templates/logged-in-template";
 import {
   APP_NAME,
@@ -65,8 +66,10 @@ export default function About() {
  * reaches the browser). On a failed/absent service call both versions show
  * "unavailable" rather than throwing, so a backend hiccup degrades just these
  * two cards and the Application card above still renders (mirrors `BatchesCard`).
+ * Exported for direct unit testing (its resolved/failed output can't be asserted
+ * through the page's Suspense boundary in jsdom).
  */
-async function ServiceCards() {
+export async function ServiceCards() {
   // Only the fetch goes in the try/catch — JSX is constructed afterwards. A
   // try/catch can't catch a child component's render-time errors (see the
   // react-hooks/error-boundaries lint rule), and the fetch is the only thing
@@ -165,43 +168,6 @@ function ComponentCard({
         </Row>
       </dl>
     </Card>
-  );
-}
-
-/**
- * The shared card shell for the About page: a full-width framed `<section>` with
- * an icon + title heading, matching the home Batches card. The heading carries
- * the given `id` and the section is `aria-labelledby` it, so each card is a
- * labelled landmark region. (An explicit id per card, like the Batches card's
- * literal id, since this renders in a Server Component.)
- */
-function Card({
-  id,
-  title,
-  icon,
-  children,
-}: {
-  id: string;
-  title: string;
-  icon: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <section
-      aria-labelledby={id}
-      className="w-full rounded-xl border border-foreground/[.08] bg-background p-6 text-left shadow-sm"
-    >
-      <h2
-        id={id}
-        className="flex items-center gap-2 text-sm font-semibold tracking-tight text-foreground"
-      >
-        <span className="flex h-4 w-4 shrink-0 items-center justify-center text-primary">
-          {icon}
-        </span>
-        {title}
-      </h2>
-      <div className="mt-4">{children}</div>
-    </section>
   );
 }
 

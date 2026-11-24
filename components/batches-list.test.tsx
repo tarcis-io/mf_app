@@ -33,6 +33,7 @@ function installDialogPolyfill() {
   }
 }
 
+import { STATUS_COLORS } from "./batch-status";
 import BatchesList, { type BatchListItem } from "./batches-list";
 
 /** A list item with sensible defaults; override any field per test. */
@@ -285,22 +286,35 @@ describe("BatchesList", () => {
 
   describe("status badge color", () => {
     // The badge derives its background + text from the status's seed color via
-    // `color-mix(in srgb, <seed> …)`. jsdom normalizes the seed hex to its
-    // rgb() form inside the stored inline style, so assert on that:
-    //   #ef4444 -> rgb(239, 68, 68)   #22c55e -> rgb(34, 197, 94)
-    // The status labels ("Error", "Processed", …) also appear as <option>s in
-    // the status <select>, so badge lookups are scoped to the results row to
-    // avoid matching the dropdown options.
-    const RED = "rgb(239, 68, 68)";
-    const GREEN = "rgb(34, 197, 94)";
+    // `color-mix`, blended against the theme tokens (so it stays legible in both
+    // light and dark mode). jsdom may serialize the seed hex to its rgb() form
+    // inside the stored inline style, so accept either representation. Assert
+    // against the imported STATUS_COLORS seed (not a hardcoded literal) so the
+    // test tracks the source rather than re-encoding the palette. Labels also
+    // appear as <option>s in the status <select>, so lookups are scoped to the
+    // results row.
+    //
+    // #ef4444 -> rgb(239, 68, 68), #22c55e -> rgb(34, 197, 94).
+    const hexToRgb = (hex: string) => {
+      const n = parseInt(hex.slice(1), 16);
+      return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`;
+    };
+    /** True if the inline style references the status's seed color at all. */
+    const tintsFrom = (style: string, status: "processed" | "error") => {
+      const hex = STATUS_COLORS[status];
+      return style.includes(hex) || style.includes(hexToRgb(hex));
+    };
 
     it("tints each badge from its status color (error = red-derived)", () => {
       render(<BatchesList batches={[makeItem({ name: "Boom", status: "error" })]} />);
 
       const badge = within(screen.getByRole("listitem")).getByText("Error");
       const style = badge.getAttribute("style") ?? "";
-      // The seed red is mixed into both the background wash and the text color.
-      expect(style).toContain(`color-mix(in srgb, ${RED}`);
+      // The seed red is mixed into the badge, and it blends against the theme
+      // background token (not a hardcoded white) so dark mode stays legible.
+      expect(tintsFrom(style, "error")).toBe(true);
+      expect(style).toContain("var(--background)");
+      expect(style).toContain("var(--foreground)");
     });
 
     it("uses different colors for different statuses", () => {
@@ -314,10 +328,10 @@ describe("BatchesList", () => {
       );
 
       const [first, second] = rows();
-      const processed = within(first).getByText("Processed").getAttribute("style") ?? "";
-      const error = within(second).getByText("Error").getAttribute("style") ?? "";
-      expect(processed).toContain(GREEN);
-      expect(error).toContain(RED);
+      const processed = within(first!).getByText("Processed").getAttribute("style") ?? "";
+      const error = within(second!).getByText("Error").getAttribute("style") ?? "";
+      expect(tintsFrom(processed, "processed")).toBe(true);
+      expect(tintsFrom(error, "error")).toBe(true);
       expect(processed).not.toBe(error);
     });
   });

@@ -78,8 +78,12 @@ export default function NewBatchDialog() {
 /** The batch-creation form body (everything inside the dialog shell). */
 function NewBatchForm({ onDone }: { onDone: () => void }) {
   const formRef = useRef<HTMLFormElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  // Set when the server rejects the name as already taken (409), so the name
+  // field can be marked invalid and focused. Cleared on any edit to the name.
+  const [nameInvalid, setNameInvalid] = useState(false);
   // Mirrors which files are chosen + valid, to drive the submit button's
   // enabled state and the per-field hint. Keyed by BatchFileKey.
   const [fileState, setFileState] = useState<
@@ -127,6 +131,12 @@ function NewBatchForm({ onDone }: { onDone: () => void }) {
           setError(
             result.error ?? "Couldn't create the batch. Please try again.",
           );
+          // A duplicate name is a field-level problem: mark the name invalid
+          // and move focus to it so the user can fix the one thing that's wrong.
+          if (result.duplicate) {
+            setNameInvalid(true);
+            nameRef.current?.focus();
+          }
         }
       });
     },
@@ -154,7 +164,15 @@ function NewBatchForm({ onDone }: { onDone: () => void }) {
           </p>
         ) : null}
 
-        <NameField value={name} onChange={setName} />
+        <NameField
+          ref={nameRef}
+          value={name}
+          invalid={nameInvalid}
+          onChange={(next) => {
+            setNameInvalid(false);
+            setName(next);
+          }}
+        />
 
         {GROUPS.map((group) => (
           <FileCard key={group.id} title={group.title}>
@@ -195,10 +213,15 @@ function NewBatchForm({ onDone }: { onDone: () => void }) {
 
 /** The required batch-name text field. */
 function NameField({
+  ref,
   value,
+  invalid = false,
   onChange,
 }: {
+  ref?: React.Ref<HTMLInputElement>;
   value: string;
+  /** Marks the field invalid (e.g. the server rejected the name as a duplicate). */
+  invalid?: boolean;
   onChange: (value: string) => void;
 }) {
   const id = useId();
@@ -208,14 +231,20 @@ function NameField({
         Name
       </label>
       <input
+        ref={ref}
         id={id}
         name="name"
         type="text"
         required
+        aria-invalid={invalid || undefined}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder="e.g. Spring run 2026"
-        className="h-10 w-full rounded-lg border border-foreground/15 bg-background px-3 text-sm text-foreground outline-none transition-colors placeholder:text-foreground/40 hover:border-foreground/25 focus-visible:border-foreground/25 focus-visible:ring-2 focus-visible:ring-primary"
+        className={`h-10 w-full rounded-lg border bg-background px-3 text-sm text-foreground outline-none transition-colors placeholder:text-foreground/40 focus-visible:ring-2 focus-visible:ring-primary ${
+          invalid
+            ? "border-[#ef4444] focus-visible:border-[#ef4444]"
+            : "border-foreground/15 hover:border-foreground/25 focus-visible:border-foreground/25"
+        }`}
       />
     </div>
   );

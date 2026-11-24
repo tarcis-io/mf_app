@@ -72,7 +72,7 @@ describe("authorized callback", () => {
 
     expect(spy).toHaveBeenCalledOnce();
     // Redirect target is the site root.
-    const target = spy.mock.calls[0][0];
+    const target = spy.mock.calls[0]![0];
     expect(target.toString()).toBe("https://app.massflow.ai/");
 
     spy.mockRestore();

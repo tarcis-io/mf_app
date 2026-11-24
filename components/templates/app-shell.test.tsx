@@ -210,9 +210,11 @@ describe("AppShell", () => {
 
     const order = [brand, home, settings, signOut];
     for (let i = 0; i < order.length - 1; i++) {
+      const current = order[i]!;
+      const next = order[i + 1]!;
       // Node.compareDocumentPosition: FOLLOWING (4) means the arg comes after.
       expect(
-        order[i].compareDocumentPosition(order[i + 1]) &
+        current.compareDocumentPosition(next) &
           Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
     }

@@ -41,11 +41,16 @@ export const STATUS_COLORS: Record<BatchStatus, string> = {
 
 /**
  * A small status pill: the status label on a faint tint of its own indicator
- * color. The background/border/text are derived from the one `STATUS_COLORS`
- * hex via `color-mix` (background a light wash, text a darker shade for
- * contrast on white), so a color change in one place updates the whole badge.
- * The color is conveyed by the label text too, never by color alone, so it's
- * accessible; the badge is an ordinary inline element with no ARIA role.
+ * color. The background and text are derived from the one `STATUS_COLORS` hex
+ * via `color-mix`, blended against the theme tokens rather than hardcoded
+ * black/white: the background is a light wash over `--background` and the text
+ * is the hue pulled toward `--foreground`. In light mode (`--foreground` black,
+ * `--background` white) this matches the original look; in dark mode it flips to
+ * a light tint on a dark wash, so the pill stays legible in both themes instead
+ * of rendering near-black text on a dark surface. A color change in one place
+ * updates the whole badge. The color is conveyed by the label text too, never
+ * by color alone, so it's accessible; the badge is an ordinary inline element
+ * with no ARIA role.
  */
 export function StatusBadge({ status }: { status: BatchStatus }) {
   const color = STATUS_COLORS[status];
@@ -53,8 +58,8 @@ export function StatusBadge({ status }: { status: BatchStatus }) {
     <span
       className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap"
       style={{
-        backgroundColor: `color-mix(in srgb, ${color} 14%, transparent)`,
-        color: `color-mix(in srgb, ${color} 70%, #000)`,
+        backgroundColor: `color-mix(in srgb, ${color} 16%, var(--background))`,
+        color: `color-mix(in srgb, ${color} 55%, var(--foreground))`,
       }}
     >
       {STATUS_LABELS[status]}

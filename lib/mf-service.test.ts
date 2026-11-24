@@ -46,7 +46,7 @@ describe("listBatches", () => {
     await listBatches("google-sub-123");
 
     expect(fetchMock).toHaveBeenCalledOnce();
-    const [url, init] = fetchMock.mock.calls[0];
+    const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe("https://mf-service.massflow.ai/batches");
     expect(new Headers(init?.headers).get("X-User-Id")).toBe("google-sub-123");
     // Per-user, live data: must not be cached across requests.
@@ -66,7 +66,7 @@ describe("listBatches", () => {
 
       await listBatches("user-123");
 
-      expect(fetchMock.mock.calls[0][0]).toBe(
+      expect(fetchMock.mock.calls[0]![0]).toBe(
         "https://mf-service.massflow.ai/batches",
       );
     },
@@ -84,7 +84,7 @@ describe("listBatches", () => {
     const result = await listBatches("user-123");
 
     expect(result).toHaveLength(2);
-    expect(result[1].status).toBe("error");
+    expect(result[1]!.status).toBe("error");
   });
 
   it("throws on a non-2xx response (so the caller can show an error state)", async () => {
@@ -104,8 +104,51 @@ describe("listBatches", () => {
 
     // The fetch carries an AbortSignal (from AbortSignal.timeout) so the render
     // can't hang indefinitely on mf_service.
-    const init = fetchMock.mock.calls[0][1];
+    const init = fetchMock.mock.calls[0]![1];
     expect(init?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("requests a 5s timeout signal and rejects when it aborts", async () => {
+    // Drive the real timeout wiring without faking timers (which don't reliably
+    // intercept AbortSignal.timeout): stub AbortSignal.timeout to hand back a
+    // controller's signal we can abort on demand, and assert both that the
+    // function asks for the 5000ms cap and that an abort propagates as a
+    // rejection (how the caller learns a hung backend gave up).
+    const controller = new AbortController();
+    const timeoutSpy = vi
+      .spyOn(AbortSignal, "timeout")
+      .mockReturnValue(controller.signal);
+
+    // A hung backend: fetch only settles if its signal aborts.
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      (_input, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(
+              new DOMException("The operation timed out.", "TimeoutError"),
+            ),
+          );
+        }),
+    );
+
+    const pending = listBatches("user-123");
+    const assertion = expect(pending).rejects.toThrow(/timed out/i);
+    // Fire the "timeout".
+    controller.abort();
+    await assertion;
+
+    expect(timeoutSpy).toHaveBeenCalledWith(5000);
+  });
+
+  it("rejects when fetch itself fails (network error, not a non-2xx)", async () => {
+    // A connection refused / DNS failure rejects fetch outright (distinct from
+    // an HTTP error response). It must propagate so the caller shows its error
+    // state rather than treating it as success.
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(
+      new TypeError("fetch failed"),
+    );
+
+    await expect(listBatches("user-123")).rejects.toThrow(/fetch failed/);
   });
 
   it("throws when the body is valid JSON but not an array", async () => {
@@ -166,7 +209,7 @@ describe("getServiceInfo", () => {
     await getServiceInfo();
 
     expect(fetchMock).toHaveBeenCalledOnce();
-    const [url, init] = fetchMock.mock.calls[0];
+    const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe("https://mf-service.massflow.ai/version");
     expect(init?.cache).toBe("no-store");
     // /version is service identity, not per-user — no X-User-Id header.
@@ -339,7 +382,7 @@ describe("createBatch", () => {
     await createBatch("google-sub-123", "Spring run", makeFiles());
 
     expect(fetchMock).toHaveBeenCalledOnce();
-    const [url, init] = fetchMock.mock.calls[0];
+    const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe("https://mf-service.massflow.ai/batches");
     expect(init?.method).toBe("POST");
     expect(new Headers(init?.headers).get("X-User-Id")).toBe("google-sub-123");
@@ -356,7 +399,7 @@ describe("createBatch", () => {
 
     await createBatch("user-123", "Spring run", makeFiles());
 
-    const body = fetchMock.mock.calls[0][1]?.body as FormData;
+    const body = fetchMock.mock.calls[0]![1]?.body as FormData;
     expect(body.get("name")).toBe("Spring run");
     for (const { field } of BATCH_FILE_FIELDS) {
       expect(body.get(field), `field ${field}`).toBeInstanceOf(File);
@@ -374,7 +417,7 @@ describe("createBatch", () => {
 
     await createBatch("user-123", "Spring run", makeFiles());
 
-    const body = fetchMock.mock.calls[0][1]?.body as FormData;
+    const body = fetchMock.mock.calls[0]![1]?.body as FormData;
     // This is the core requirement: every part carries the fixed filename the
     // endpoint stores under, never the "user-picked-*.xyz" name from makeFiles.
     for (const { field, filename } of BATCH_FILE_FIELDS) {
@@ -467,7 +510,7 @@ describe("renameBatch", () => {
     await renameBatch("google-sub-123", "batch-1", "Renamed");
 
     expect(fetchMock).toHaveBeenCalledOnce();
-    const [url, init] = fetchMock.mock.calls[0];
+    const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe("https://mf-service.massflow.ai/batches/batch-1");
     expect(init?.method).toBe("PATCH");
     expect(new Headers(init?.headers).get("X-User-Id")).toBe("google-sub-123");
@@ -484,7 +527,7 @@ describe("renameBatch", () => {
 
     await renameBatch("user-123", "a/b c", "Renamed");
 
-    expect(fetchMock.mock.calls[0][0]).toBe(
+    expect(fetchMock.mock.calls[0]![0]).toBe(
       "https://mf-service.massflow.ai/batches/a%2Fb%20c",
     );
   });
@@ -550,7 +593,7 @@ describe("deleteBatch", () => {
     await deleteBatch("google-sub-123", "batch-1");
 
     expect(fetchMock).toHaveBeenCalledOnce();
-    const [url, init] = fetchMock.mock.calls[0];
+    const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe("https://mf-service.massflow.ai/batches/batch-1");
     expect(init?.method).toBe("DELETE");
     expect(new Headers(init?.headers).get("X-User-Id")).toBe("google-sub-123");

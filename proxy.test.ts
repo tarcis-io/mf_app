@@ -84,7 +84,7 @@ describe("proxy", () => {
     // base64url (see generateNonce): only A–Za–z0–9-_, no +, /, or = padding.
     const match = csp!.match(/script-src [^;]*'nonce-([A-Za-z0-9_-]+)'/);
     expect(match).not.toBeNull();
-    const nonce = match![1];
+    const nonce = match![1]!;
     expect(nonce).not.toMatch(/[+/=]/);
     // 16 random bytes base64url-encode to 22 unpadded chars.
     expect(nonce.length).toBe(22);
@@ -117,7 +117,7 @@ describe("proxy", () => {
     const res = runProxy(makeRequest("/", true));
 
     expect(nextSpy).toHaveBeenCalledOnce();
-    const requestHeaders = nextSpy.mock.calls[0][0]?.request?.headers;
+    const requestHeaders = nextSpy.mock.calls[0]![0]?.request?.headers;
     const requestCsp = requestHeaders?.get("Content-Security-Policy");
     const responseCsp = res.headers.get("Content-Security-Policy");
 

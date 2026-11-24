@@ -25,8 +25,10 @@ import {
  * `createBatch`, and revalidates the list.
  *
  * Returns a typed result instead of throwing, so the dialog can keep itself
- * open and show a banner on failure (distinguishing a duplicate name from any
- * other error) and close + reset on success:
+ * open and show a banner on failure, then close + reset on success. The
+ * `duplicate` flag lets the dialog treat a taken name as a field-level problem
+ * (it marks the name input `aria-invalid` and focuses it) rather than just a
+ * generic banner:
  *   - `{ ok: true }`                      — created; the list has been revalidated.
  *   - `{ ok: false, duplicate: true }`    — the name is already taken (409).
  *   - `{ ok: false, duplicate: false }`   — anything else (missing file, network, …).

@@ -34,9 +34,10 @@ export default function Home() {
  * `UserLabel`). A Server Component reading the session; isolated so `auth()` is
  * the only thing inside the title's Suspense boundary. If the user somehow has
  * neither a name nor an email, falls back to a plain "Home" so the header never
- * reads "Hello, ".
+ * reads "Hello, ". Exported for direct unit testing (its resolved output can't
+ * be asserted through the page's Suspense boundary in jsdom).
  */
-async function GreetingTitle() {
+export async function GreetingTitle() {
   const session = await auth();
   const name = session?.user?.name ?? session?.user?.email ?? undefined;
   return <>{name ? `Hello, ${name}` : "Home"}</>;

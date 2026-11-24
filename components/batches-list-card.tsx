@@ -1,6 +1,5 @@
-import type { ReactNode } from "react";
-
 import { auth } from "@/auth";
+import Card from "@/components/card";
 import BatchesIcon from "@/components/batches-icon";
 import BatchesList, { type BatchListItem } from "@/components/batches-list";
 import NewBatchDialog from "@/components/new-batch-dialog";
@@ -65,7 +64,18 @@ function toSortedItems(batches: Batch[]): BatchListItem[] {
  * under PPR.
  */
 export default async function BatchesListCard() {
-  return <Card>{await BatchesListContent()}</Card>;
+  return (
+    <Card
+      id="batches-list-title"
+      title="Batches"
+      icon={<BatchesIcon className="h-4 w-4" />}
+      // The "+ New" trigger + its creation dialog live in the header (not the
+      // body) so they're available even when the list itself fails to load.
+      actions={<NewBatchDialog />}
+    >
+      {await BatchesListContent()}
+    </Card>
+  );
 }
 
 /** Fetch + sort the batches; isolated so the fetch is the only thing that can throw. */
@@ -89,33 +99,6 @@ async function BatchesListContent() {
   }
 
   return <BatchesList batches={items} />;
-}
-
-/**
- * The card shell: title (with the shared batches icon) + framed body. Shared by
- * the list and error states so the heading is always present.
- */
-function Card({ children }: { children: ReactNode }) {
-  return (
-    <section
-      aria-labelledby="batches-list-title"
-      className="w-full rounded-xl border border-foreground/[.08] bg-background p-6 text-left shadow-sm"
-    >
-      <div className="flex items-center justify-between gap-3">
-        <h2
-          id="batches-list-title"
-          className="flex items-center gap-2 text-sm font-semibold tracking-tight text-foreground"
-        >
-          <BatchesIcon className="h-4 w-4 shrink-0 text-primary" />
-          Batches
-        </h2>
-        {/* The "+ New" trigger + its creation dialog. In the card shell (not the
-            body) so it's available even when the list itself fails to load. */}
-        <NewBatchDialog />
-      </div>
-      <div className="mt-5">{children}</div>
-    </section>
-  );
 }
 
 /** Shown when the session has no user id or the service call fails. */

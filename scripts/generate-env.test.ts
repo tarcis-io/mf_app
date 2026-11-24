@@ -1,14 +1,18 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { generateAuthSecret, generateEnvLocal } from "./generate-env.mjs";
 
-/** This test's directory, resolved from its own URL (ESM-safe, no __dirname). */
-const here = fileURLToPath(new URL(".", import.meta.url));
+/**
+ * The project root. Vitest runs with its working directory at the repo root, so
+ * resolve the real `.env.example` from there. (Avoids `import.meta.url` +
+ * `fileURLToPath`, which throws under the test bundler when the module URL isn't
+ * a `file:` scheme.)
+ */
+const projectRoot = process.cwd();
 
 // A minimal `.env.example` fixture carrying the two lines the script transforms
 // (the bare AUTH_SECRET assignment and the commented dev-login flag), plus a
@@ -157,7 +161,7 @@ describe("generateEnvLocal", () => {
   it("stays in sync with the real .env.example (guards against drift)", () => {
     // Point at the committed template; if either anchored line is ever renamed
     // or removed, this fails here instead of silently shipping a broken setup.
-    const realExample = join(here, "..", ".env.example");
+    const realExample = join(projectRoot, ".env.example");
 
     const result = generateEnvLocal({
       examplePath: realExample,
