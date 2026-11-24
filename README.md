@@ -105,13 +105,16 @@ Google OAuth redirect-URI setup, and troubleshooting.
 
 ## Security
 
-Every response carries hardening headers. A strict **Content-Security-Policy**
-with a fresh per-request nonce is set in `proxy.ts` (`script-src` is
-nonce-based with `'strict-dynamic'` — no `'unsafe-inline'` scripts); the static
-headers (`Strict-Transport-Security`, `X-Content-Type-Options`,
-`X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`,
-`Cross-Origin-Opener-Policy`) come from `next.config.ts`. When `mf_service` is
-wired up, add its origin to the CSP `connect-src` directive in `proxy.ts`.
+Every response carries hardening headers. A strict, **static
+Content-Security-Policy** is set in `proxy.ts`: `script-src` allows same-origin
+scripts plus the one inline theme script (authorized by its SHA-256 hash) — no
+`'unsafe-inline'` scripts, and deliberately hash-based rather than a per-request
+nonce, since the app's pages are statically prerendered / CDN-cached and a nonce
+can't match cached HTML. The static headers (`Strict-Transport-Security`,
+`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`,
+`Permissions-Policy`, `Cross-Origin-Opener-Policy`) come from `next.config.ts`.
+When `mf_service` is wired up, add its origin to the CSP `connect-src` directive
+in `proxy.ts`.
 
 ## Pages
 
@@ -164,7 +167,7 @@ mf_app/                                    # repository root
 ├── auth.test.ts                           # tests for the authorized + session callbacks
 ├── env.ts                                 # fail-fast validation of required env vars
 ├── env.test.ts
-├── proxy.ts                               # route protection + per-request CSP (Next 16 proxy)
+├── proxy.ts                               # route protection + static CSP (Next 16 proxy)
 ├── proxy.test.ts
 ├── .env.example                           # template for required env vars
 ├── DEPLOYMENT.md                          # Cloud Run deployment guide (env contract, OAuth)

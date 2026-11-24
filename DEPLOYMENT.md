@@ -116,11 +116,13 @@ Then add `$URL/api/auth/callback/google` to the OAuth client's Authorized redire
 
 - Visit the service URL → you should be redirected to `/login`.
 - "Continue with Google" → Google consent → back to `/`.
-- Confirm the response carries the security headers (`Content-Security-Policy` with a `nonce-…`, `Strict-Transport-Security`, etc. — see [Security headers](#security-headers)).
+- Confirm the response carries the security headers (`Content-Security-Policy`, `Strict-Transport-Security`, etc. — see [Security headers](#security-headers)).
 
 ## Security headers
 
-`mf_app` sends a strict, per-request **Content-Security-Policy** with a fresh nonce (set in `proxy.ts`), plus static hardening headers (`Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, `Cross-Origin-Opener-Policy`) from `next.config.ts`. No extra Cloud Run configuration is required for these.
+`mf_app` sends a strict, **static Content-Security-Policy** (set in `proxy.ts`), plus static hardening headers (`Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, `Cross-Origin-Opener-Policy`) from `next.config.ts`. No extra Cloud Run configuration is required for these.
+
+The `script-src` is hash-based, not nonce-based: it allows same-origin scripts (`'self'`) plus the one inline theme-init script, authorized by its SHA-256 hash. This is deliberate — the app's pages are statically prerendered and served through Firebase App Hosting's CDN, and a per-request nonce can't match the nonce baked into cached HTML (it would block every script). A static policy is identical on a prerender, a CDN cache hit, and a dynamic render.
 
 The directive-by-directive rationale (and the note on adding `mf_service`'s origin to `connect-src` once the API is wired up) lives next to the code in `proxy.ts`.
 
@@ -131,5 +133,5 @@ The directive-by-directive rationale (and the note on adding `mf_service`'s orig
 | `UntrustedHost` error on sign-in                                                 | `AUTH_TRUST_HOST` not set                      | Set `AUTH_TRUST_HOST=true`.                                                                                                                                              |
 | `redirect_uri_mismatch` from Google                                              | Callback URI not registered / `AUTH_URL` wrong | Register `https://<origin>/api/auth/callback/google`; set `AUTH_URL` to the exact origin.                                                                                |
 | Container crashes on startup with "Missing required environment variable(s)"     | A required secret/env is absent                | Provide the listed variables (see [Environment variables](#environment-variables)).                                                                                      |
-| Blank page / scripts blocked in console                                          | CSP nonce not reaching the renderer            | Ensure `proxy.ts` is deployed unmodified; the matcher must run on page routes.                                                                                           |
-| Styles missing / page renders unstyled, console shows `style-src` CSP violations | `'unsafe-inline'` was removed from `style-src` | Restore `style-src 'self' 'unsafe-inline'` in `proxy.ts`. Next/React inject inline styles that cannot carry a nonce, so this is required by design — don't "tighten" it. |
+| Blank page / scripts blocked, console shows `script-src` CSP violations          | The theme-script hash drifted from the script, or `script-src` was changed | The inline theme script is authorized by its SHA-256 hash (`THEME_INIT_SCRIPT_HASH` in `lib/theme.ts`). If the script was edited without updating the hash, `lib/theme.test.ts` fails with the correct value — update the constant. Don't reintroduce a per-request nonce (it can't match prerendered/CDN-cached HTML). |
+| Styles missing / page renders unstyled, console shows `style-src` CSP violations | `'unsafe-inline'` was removed from `style-src` | Restore `style-src 'self' 'unsafe-inline'` in `proxy.ts`. Next/React inject inline styles that can't carry a hash, so this is required by design — don't "tighten" it. |

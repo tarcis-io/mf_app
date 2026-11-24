@@ -1,30 +1,38 @@
 import { NextResponse } from "next/server";
 
 import { auth, authorized } from "@/auth";
+import { THEME_INIT_SCRIPT_HASH } from "@/lib/theme";
 
 /**
- * Build the Content-Security-Policy for a request, bound to a per-request
- * nonce. Notes on specific directives:
- *   - `script-src 'nonce-…' 'strict-dynamic'`: only scripts carrying this
- *     request's nonce (or loaded by one that does) may execute. `'strict-dynamic'`
- *     lets Next's nonce'd bootstrap script load the rest of the bundle.
+ * Build the app's Content-Security-Policy. It is STATIC (no per-request nonce):
+ * most pages are statically prerendered under Partial Prerendering and served
+ * from a CDN (Firebase App Hosting), so a per-request nonce can't match the
+ * nonce baked into the cached HTML — it would block every script. A static
+ * policy is identical on prerender, CDN hit, and dynamic render.
+ *
+ * Notes on specific directives:
+ *   - `script-src 'self' '<theme-hash>'`: same-origin scripts (all of Next's
+ *     `/_next/static/...` chunks load from our own origin) plus the one inline
+ *     script we emit — the theme-init snippet — authorized by its SHA-256 hash
+ *     ({@link THEME_INIT_SCRIPT_HASH}). No `'unsafe-inline'`, no nonce,
+ *     deliberately no `'strict-dynamic'` (which would ignore `'self'` and defeat
+ *     the point on prerendered HTML).
  *   - `style-src 'self' 'unsafe-inline'`: Next/React inject inline styles and
- *     style attributes that cannot carry a nonce; styles are a low-risk sink,
- *     so inline styles are allowed. (Scripts are not.)
+ *     style attributes that can't carry a hash; styles are a low-risk sink.
  *   - `img-src 'self' data:`: same-origin images (e.g. the logo) and data: URIs
  *     (inlined SVG/icons). The app does not render remote images.
  *   - `connect-src 'self'`: the app makes same-origin requests only today. When
  *     wiring up mf_service (see DEPLOYMENT.md / README), add its origin here.
  *   - `frame-ancestors 'none'`: clickjacking protection (pairs with the static
  *     X-Frame-Options: DENY).
- *   - `form-action 'self'`: the Google sign-in redirect is a server-issued
- *     navigation, not a form POST to Google, so 'self' is sufficient.
+ *   - `form-action 'self'`: see the note in `proxy` below — this currently
+ *     needs revisiting for the Google sign-in Server Action POST.
  *   - `upgrade-insecure-requests`: defense-in-depth for mixed content.
  */
-export function buildCsp(nonce: string): string {
+export function buildCsp(): string {
   const directives = [
     `default-src 'self'`,
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
+    `script-src 'self' ${THEME_INIT_SCRIPT_HASH}`,
     `style-src 'self' 'unsafe-inline'`,
     `img-src 'self' data:`,
     `font-src 'self'`,
@@ -39,27 +47,7 @@ export function buildCsp(nonce: string): string {
   return directives.join("; ");
 }
 
-/**
- * Generate a fresh CSP nonce using only Web-standard APIs (`crypto` + `btoa`),
- * so it works in both the Edge and Node.js runtimes — `Buffer` is not reliably
- * available in middleware/proxy on Edge. 16 random bytes (128 bits of entropy),
- * base64url-encoded: the `+/=` of standard base64 are swapped for `-_` and the
- * padding dropped. The nonce is an opaque token (never decoded), and the
- * base64url charset avoids any layer that might mangle `+`, `/`, or `=` in an
- * HTTP header while staying within the CSP `base64-value` grammar.
- */
-export function generateNonce(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
-  return btoa(String.fromCharCode(...bytes))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-
 export default auth((req) => {
-  const nonce = generateNonce();
-  const csp = buildCsp(nonce);
-
   // Re-run the shared gatekeeper against the session Auth.js attached to the
   // request (`req.auth`). `authorized` returns a Response (redirect) or a
   // boolean. We must enforce every outcome *here*: once a middleware function
@@ -87,17 +75,13 @@ export default auth((req) => {
     return NextResponse.redirect(signInUrl);
   }
 
-  // Allowed through. The nonce must travel on the *request's*
-  // `Content-Security-Policy` header: that is where Next looks to extract it
-  // and stamp it onto its own injected <script> tags (see
-  // next/dist/.../get-script-nonce-from-header). Without it on the request,
-  // `script-src 'nonce-…' 'strict-dynamic'` would block Next's hydration
-  // scripts and render a blank page. We also set the CSP on the response so the
-  // browser actually enforces it.
-  const requestHeaders = new Headers(req.headers);
-  requestHeaders.set("Content-Security-Policy", csp);
-  const response = NextResponse.next({ request: { headers: requestHeaders } });
-  response.headers.set("Content-Security-Policy", csp);
+  // Allowed through. The CSP is static (hash-based, no nonce — see `buildCsp`),
+  // so it only needs to go on the *response* for the browser to enforce it;
+  // there's nothing per-request for Next to read off the request headers. A
+  // static policy is what lets prerendered + CDN-cached pages keep a strict CSP
+  // without a nonce mismatch.
+  const response = NextResponse.next();
+  response.headers.set("Content-Security-Policy", buildCsp());
   return response;
 });
 

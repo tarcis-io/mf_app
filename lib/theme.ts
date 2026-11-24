@@ -57,8 +57,10 @@ function isExplicitTheme(value: string | null): value is ResolvedTheme {
  * storage) — a theme preference must never break the page load.
  *
  * NOTE: this executes inline, so under the app's strict CSP the `<script>` must
- * carry the per-request nonce (see `proxy.ts` and how `app/layout.tsx` injects
- * it); without the nonce it would be blocked.
+ * be authorized by its SHA-256 hash in `script-src` — see
+ * {@link THEME_INIT_SCRIPT_HASH} and `proxy.ts`. (A hash, not a per-request
+ * nonce: the pages this renders on are statically prerendered / CDN-cached, and
+ * a per-request nonce can't match the nonce baked into cached HTML.)
  */
 export const THEME_INIT_SCRIPT = `
 (function () {
@@ -72,6 +74,20 @@ export const THEME_INIT_SCRIPT = `
   } catch (e) {}
 })();
 `.trim();
+
+/**
+ * The CSP `script-src` source that authorizes {@link THEME_INIT_SCRIPT} as an
+ * inline script: the base64 SHA-256 of the script's exact bytes, in the
+ * `'sha256-…'` form the CSP grammar expects.
+ *
+ * Hardcoded (not computed at runtime) so `proxy.ts` can include it in the CSP
+ * synchronously and in any runtime (the proxy runs under Web APIs, not Node).
+ * It CANNOT drift from the script: `lib/theme.test.ts` recomputes the hash from
+ * `THEME_INIT_SCRIPT` and fails if this constant no longer matches — so editing
+ * the script forces updating this value (the test prints the new one).
+ */
+export const THEME_INIT_SCRIPT_HASH =
+  "'sha256-JVbKmlCrMq1h+zB4Kg4rhtAkYYnyW+igFaqTsC2Aw/A='";
 
 /**
  * Read the persisted choice. Returns `"light"`/`"dark"` when an explicit
