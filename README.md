@@ -111,14 +111,10 @@ Every response carries hardening headers, all static and all from
 `next.config.ts`: a **Content-Security-Policy** plus `Strict-Transport-Security`,
 `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`,
 `Permissions-Policy`, and `Cross-Origin-Opener-Policy`. The CSP is static (no
-per-request nonce) so it works with Partial Prerendering and a CDN; `script-src`
-allows `'unsafe-inline'` as a deliberate trade-off (a nonce can't match
-prerendered / CDN-cached HTML, and Next's inline streaming scripts can't be
-hash-listed — see the comment in `next.config.ts` and
-[Deployment](#deployment)). The other directives stay strict, and `form-action`
-allows Google's OAuth origin for sign-in. `proxy.ts` handles only auth
-route-protection. When `mf_service` is wired up, add its origin to the CSP
-`connect-src` directive in `next.config.ts`.
+per-request nonce) so it works with Partial Prerendering and a CDN, which is why
+`script-src` allows `'unsafe-inline'` as a deliberate trade-off. The full
+directive-by-directive rationale lives next to the code in **`next.config.ts`**
+(the one canonical place); `proxy.ts` handles only auth route-protection.
 
 **Service-to-service calls.** In production, every request `mf_app` makes to
 `mf_service` carries a Google-signed OIDC ID token, fetched directly from the

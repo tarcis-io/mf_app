@@ -24,8 +24,11 @@ import type { NextConfig } from "next";
  *     prod policy. (See Next's own CSP guide.)
  *   - `style-src 'self' 'unsafe-inline'`: Next/React inject inline styles.
  *   - `img-src 'self' data:`: same-origin images + inlined data: URIs.
- *   - `connect-src 'self'`: same-origin requests only today. When wiring up
- *     mf_service (see DEPLOYMENT.md / README), add its origin here.
+ *   - `connect-src 'self'`: same-origin requests only. mf_service is called
+ *     server-side (see lib/mf-service.ts), which the browser CSP never governs,
+ *     so no mf_service origin is needed here. Add one only if a Client Component
+ *     is ever introduced that fetches mf_service (or another origin) directly
+ *     from the browser.
  *   - `form-action 'self' https://accounts.google.com`: the sign-in flow posts
  *     to Google's OAuth endpoint, so it must be allowed alongside 'self'.
  *   - `frame-ancestors 'none'`: clickjacking protection (pairs with the static

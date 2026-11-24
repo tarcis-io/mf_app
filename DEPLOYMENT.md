@@ -159,9 +159,7 @@ Notes:
 
 `mf_app` sends a strict **Content-Security-Policy** and a set of hardening headers (`Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, `Cross-Origin-Opener-Policy`) — all static, all from `next.config.ts` (applied via `headers()`). No extra Cloud Run / App Hosting configuration is required.
 
-The CSP is **static** (no per-request nonce), which is what lets it work with `cacheComponents` (Partial Prerendering) and Firebase App Hosting's CDN: the header is identical on a build-time prerender, a CDN cache hit, and a dynamic render. `script-src` therefore allows `'unsafe-inline'` — a deliberate trade-off. A nonce-based policy was tried and abandoned on this stack: a per-request nonce can't match the nonce baked into prerendered / CDN-cached HTML, and Next emits an unbounded, per-build set of inline streaming scripts (`self.__next_f.push(...)`) that no fixed hash list can enumerate. The other directives stay strict (`default-src 'self'`, `object-src 'none'`, `base-uri 'self'`, `frame-ancestors 'none'`), so clickjacking, base-tag injection, and cross-origin form posts are still blocked. `form-action` additionally allows `https://accounts.google.com` for the Google sign-in POST.
-
-The directive-by-directive rationale (and the note on adding `mf_service`'s origin to `connect-src` once the API is wired up) lives next to the code in `next.config.ts`. `proxy.ts` now only does auth route-protection — it sets no headers.
+The CSP is **static** (no per-request nonce), which is what lets it work with `cacheComponents` (Partial Prerendering) and Firebase App Hosting's CDN; `script-src` therefore allows `'unsafe-inline'` as a deliberate trade-off. The full directive-by-directive rationale — why a nonce was abandoned on this stack, and which directives stay strict — lives next to the code in **`next.config.ts`**, the one canonical place. `proxy.ts` now only does auth route-protection — it sets no headers. The troubleshooting table below covers the CSP violations you'd see if a directive is changed.
 
 ## Service-to-service authentication
 

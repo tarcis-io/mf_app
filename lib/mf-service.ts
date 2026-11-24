@@ -24,6 +24,23 @@
  * mf_service), so no Google credentials are needed to run locally. The token is
  * fetched directly from the Cloud Run metadata server (no external dependency);
  * see {@link authHeaders}.
+ *
+ * Conventions shared by every call below (stated once here, not repeated per
+ * function):
+ *   - `X-User-Id` carries the caller's Google account id (the OAuth `sub`,
+ *     surfaced as `session.user.id`; see `@/auth`), which scopes each batch to
+ *     its owner. Sent on all batch endpoints; omitted from `getServiceInfo`,
+ *     which is service identity, not per-user. `mf_service` returns `422` if a
+ *     batch call omits it.
+ *   - Every call is uncached (`cache: "no-store"` — the data is live and
+ *     per-user) and capped at {@link REQUEST_TIMEOUT_MS}, so a hung backend
+ *     can't stall the render.
+ *   - Each throws on a missing base URL, a timeout, or a non-2xx response; the
+ *     caller catches that and renders its error/unavailable state. Specific
+ *     status codes map to typed errors ({@link DuplicateBatchNameError},
+ *     {@link BatchNotFoundError}) where noted.
+ *   - These are server→server calls, so the browser CSP `connect-src` does not
+ *     govern them.
  */
 
 /**
@@ -302,24 +319,9 @@ async function authHeaders(audience: string): Promise<Record<string, string>> {
 }
 
 /**
- * List the batches owned by `userId`, newest first, by calling
- * `GET {MF_SERVICE_URL}/batches`.
- *
- * The user's identity is sent in the `X-User-Id` header — the Google account id
- * (the OAuth `sub`, surfaced as `session.user.id`; see `@/auth`). `mf_service`
- * scopes every batch to that header and returns `422` if it's absent, so the
- * caller must pass a real id.
- *
- * Always fetched fresh (`cache: "no-store"`): the count is a live figure, and
- * the response is per-user, so it must never be cached across requests. The
- * request is capped at `REQUEST_TIMEOUT_MS`. Throws on a missing base URL, a
- * timeout, any non-2xx response, or a body that isn't a JSON array; the caller
- * (`BatchesCard`) catches that and renders an error state rather than failing
- * the page.
- *
- * Note: this is a server-to-server call (Next server → mf_service), so it is
- * not governed by the browser CSP `connect-src` in `proxy.ts` — that directive
- * only applies to fetches made by the browser.
+ * List the batches owned by `userId`, newest first, via
+ * `GET {MF_SERVICE_URL}/batches`. (See the shared call conventions at the top of
+ * this module.) Additionally throws if the body isn't a JSON array.
  */
 export async function listBatches(userId: string): Promise<Batch[]> {
   const base = baseUrl();
@@ -435,17 +437,14 @@ export class DuplicateBatchNameError extends Error {
  * Create a batch and upload its five files via `POST {MF_SERVICE_URL}/batches`
  * (`multipart/form-data`). Returns the created `Batch`, which starts at status
  * `creating`; mf_service stores the files in a background task and advances it
- * to `created` (poll `GET /batches/{id}` to observe).
+ * to `created` (poll `GET /batches/{id}` to observe). Throws
+ * {@link DuplicateBatchNameError} on `409` (name taken). (See the shared call
+ * conventions at the top of this module.)
  *
- * The caller's identity goes in the `X-User-Id` header (the Google `sub`; see
- * `@/auth`), the same as `listBatches`. Every file is sent under its mf_service
- * field name and, critically, RENAMED to the expected upload filename from
- * {@link BATCH_FILE_FIELDS} — the user's original filenames are ignored, because
- * the service keys stored files by these fixed names.
- *
- * Throws {@link DuplicateBatchNameError} on `409` (name taken), and a generic
- * `Error` on any other non-2xx (e.g. `422` for a missing file). Capped at
- * `REQUEST_TIMEOUT_MS` like the other calls.
+ * Every file is sent under its mf_service field name and, critically, RENAMED to
+ * the expected upload filename from {@link BATCH_FILE_FIELDS} — the user's
+ * original filenames are ignored, because the service keys stored files by these
+ * fixed names.
  */
 export async function createBatch(
   userId: string,
@@ -505,14 +504,11 @@ export class BatchNotFoundError extends Error {
 
 /**
  * Rename a batch via `PATCH {MF_SERVICE_URL}/batches/{id}` with a JSON
- * `{ name }` body. Returns the updated `Batch`. The name is the only mutable
- * field; all others are server-managed.
- *
- * Identity goes in `X-User-Id` (the Google `sub`; see `@/auth`), and the id is
- * scoped to that user — another user's batch reads as `404`. Throws
- * {@link DuplicateBatchNameError} on `409` (the new name is taken),
- * {@link BatchNotFoundError} on `404`, and a generic `Error` on any other
- * non-2xx. Capped at `REQUEST_TIMEOUT_MS`.
+ * `{ name }` body. Returns the updated `Batch`; the name is the only mutable
+ * field. The id is scoped to the user, so another user's batch reads as `404`.
+ * Throws {@link DuplicateBatchNameError} on `409` (new name taken) and
+ * {@link BatchNotFoundError} on `404`. (See the shared call conventions at the
+ * top of this module.)
  */
 export async function renameBatch(
   userId: string,
@@ -550,13 +546,10 @@ export async function renameBatch(
 }
 
 /**
- * Delete a batch via `DELETE {MF_SERVICE_URL}/batches/{id}`. Resolves on
- * success (mf_service replies `200`/`204`, which may carry no body, so nothing
- * is parsed or returned).
- *
- * Identity goes in `X-User-Id` (the Google `sub`; see `@/auth`), scoped to that
- * user. Throws {@link BatchNotFoundError} on `404` (absent or another user's),
- * and a generic `Error` on any other non-2xx. Capped at `REQUEST_TIMEOUT_MS`.
+ * Delete a batch via `DELETE {MF_SERVICE_URL}/batches/{id}`. Resolves on success
+ * (mf_service replies `200`/`204`, which may carry no body, so nothing is parsed
+ * or returned). Throws {@link BatchNotFoundError} on `404` (absent or another
+ * user's). (See the shared call conventions at the top of this module.)
  */
 export async function deleteBatch(userId: string, id: string): Promise<void> {
   const base = baseUrl();
@@ -597,13 +590,9 @@ export interface ServiceInfo {
 
 /**
  * Fetch mf_service's identity and versions via `GET {MF_SERVICE_URL}/version`.
- *
- * Unlike the batch endpoints this is not per-user, so it sends no `X-User-Id`.
- * Always fetched fresh (`cache: "no-store"`) and capped at `REQUEST_TIMEOUT_MS`,
- * like the other calls. Throws on a missing base URL, a timeout, any non-2xx
- * response, or a body missing the expected `version`/`engine_version` strings;
- * the caller (the About page) catches that and renders an "unavailable" state
- * rather than failing the page.
+ * Not per-user, so it sends no `X-User-Id`. Additionally throws if the body is
+ * missing the expected `version`/`engine_version` strings. (See the shared call
+ * conventions at the top of this module.)
  */
 export async function getServiceInfo(): Promise<ServiceInfo> {
   const base = baseUrl();

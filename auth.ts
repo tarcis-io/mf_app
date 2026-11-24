@@ -129,8 +129,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   // Google is always available; the dev-only Credentials provider is appended
   // solely when explicitly enabled for local dev (see `isDevLoginEnabled`).
   providers: isDevLoginEnabled() ? [Google, devLoginProvider] : [Google],
-  // No database adapter is configured, so use stateless JWT sessions.
-  session: { strategy: "jwt" },
+  session: { strategy: "jwt" }, // stateless (no DB adapter — see the file docblock)
   // Route unauthenticated users to our custom login page instead of the
   // Auth.js default page at `/api/auth/signin`.
   pages: {
