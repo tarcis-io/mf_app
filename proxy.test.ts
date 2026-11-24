@@ -115,7 +115,7 @@ describe("proxy", () => {
 // or newly running the Auth.js endpoints through the proxy) would be invisible
 // in the behavioral tests above, which call the proxy fn directly and never
 // exercise the matcher. So assert the pattern's routing decisions directly.
-// (The CSP is a static header in next.config.ts and is tested there, not here.)
+// (The CSP is a static header defined in next.config.ts, not in the proxy.)
 describe("config.matcher", () => {
   // Next.js applies the matcher body to the pathname. The pattern is
   // `/(<body>)`, so the capturing body is tested against the path with its
