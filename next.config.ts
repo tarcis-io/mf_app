@@ -1,14 +1,52 @@
 import type { NextConfig } from "next";
 
 /**
- * Static security headers applied to every response.
+ * The app's Content-Security-Policy. STATIC and defined here (not in `proxy.ts`)
+ * so it's emitted at the framework layer on every response — including the
+ * statically prerendered pages that Partial Prerendering / `cacheComponents`
+ * generates at build time and that Firebase App Hosting serves from its CDN.
  *
- * The Content-Security-Policy is deliberately NOT here — it carries a
- * per-request nonce and is set in `proxy.ts`. Everything below is static and
- * belongs at the framework layer so it also covers responses the proxy's
- * matcher excludes (static assets, the Auth.js routes).
+ * Why not a per-request nonce? It was tried and fails on this stack: a nonce
+ * minted per request in middleware can't match the nonce baked into
+ * prerendered / CDN-cached HTML, and Next emits an unbounded, per-build set of
+ * inline streaming scripts (`self.__next_f.push(...)`) that no fixed hash list
+ * can enumerate. So `script-src` allows `'unsafe-inline'` — a deliberate
+ * trade-off to keep a working CSP alongside static rendering + CDN caching. The
+ * other directives stay strict, so clickjacking (`frame-ancestors`), base-tag
+ * injection (`base-uri`), plugin/object embedding (`object-src`), and
+ * cross-origin form posts are all still locked down.
+ *
+ * Notes on specific directives:
+ *   - `style-src 'self' 'unsafe-inline'`: Next/React inject inline styles.
+ *   - `img-src 'self' data:`: same-origin images + inlined data: URIs.
+ *   - `connect-src 'self'`: same-origin requests only today. When wiring up
+ *     mf_service (see DEPLOYMENT.md / README), add its origin here.
+ *   - `form-action 'self' https://accounts.google.com`: the sign-in flow posts
+ *     to Google's OAuth endpoint, so it must be allowed alongside 'self'.
+ *   - `frame-ancestors 'none'`: clickjacking protection (pairs with the static
+ *     X-Frame-Options: DENY).
+ *   - `upgrade-insecure-requests`: defense-in-depth for mixed content.
+ */
+const CONTENT_SECURITY_POLICY = [
+  `default-src 'self'`,
+  `script-src 'self' 'unsafe-inline'`,
+  `style-src 'self' 'unsafe-inline'`,
+  `img-src 'self' data:`,
+  `font-src 'self'`,
+  `connect-src 'self'`,
+  `object-src 'none'`,
+  `base-uri 'self'`,
+  `form-action 'self' https://accounts.google.com`,
+  `frame-ancestors 'none'`,
+  `frame-src 'none'`,
+  `upgrade-insecure-requests`,
+].join("; ");
+
+/**
+ * Static security headers applied to every response (via `headers()` below).
  */
 const securityHeaders = [
+  { key: "Content-Security-Policy", value: CONTENT_SECURITY_POLICY },
   // Force HTTPS for two years, including subdomains, and allow preloading.
   // Safe on Cloud Run (always HTTPS at the edge). Only takes effect over HTTPS.
   {

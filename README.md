@@ -105,16 +105,18 @@ Google OAuth redirect-URI setup, and troubleshooting.
 
 ## Security
 
-Every response carries hardening headers. A strict **Content-Security-Policy**
-with a fresh per-request nonce is set in `proxy.ts` (`script-src` is nonce-based
-with `'strict-dynamic'` — no `'unsafe-inline'` scripts). Because the nonce must
-match on every request, page responses are also sent `Cache-Control: no-store`
-so a CDN (e.g. Firebase App Hosting) can't serve cached HTML with a stale nonce;
-see [Deployment](#deployment) for that caveat. The static headers
-(`Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options`,
-`Referrer-Policy`, `Permissions-Policy`, `Cross-Origin-Opener-Policy`) come from
-`next.config.ts`. When `mf_service` is wired up, add its origin to the CSP
-`connect-src` directive in `proxy.ts`.
+Every response carries hardening headers, all static and all from
+`next.config.ts`: a **Content-Security-Policy** plus `Strict-Transport-Security`,
+`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`,
+`Permissions-Policy`, and `Cross-Origin-Opener-Policy`. The CSP is static (no
+per-request nonce) so it works with Partial Prerendering and a CDN; `script-src`
+allows `'unsafe-inline'` as a deliberate trade-off (a nonce can't match
+prerendered / CDN-cached HTML, and Next's inline streaming scripts can't be
+hash-listed — see the comment in `next.config.ts` and
+[Deployment](#deployment)). The other directives stay strict, and `form-action`
+allows Google's OAuth origin for sign-in. `proxy.ts` handles only auth
+route-protection. When `mf_service` is wired up, add its origin to the CSP
+`connect-src` directive in `next.config.ts`.
 
 ## Pages
 
@@ -167,7 +169,7 @@ mf_app/                                    # repository root
 ├── auth.test.ts                           # tests for the authorized + session callbacks
 ├── env.ts                                 # fail-fast validation of required env vars
 ├── env.test.ts
-├── proxy.ts                               # route protection + per-request CSP (Next 16 proxy)
+├── proxy.ts                               # route protection (Next 16 proxy); CSP lives in next.config.ts
 ├── proxy.test.ts
 ├── .env.example                           # template for required env vars
 ├── DEPLOYMENT.md                          # Cloud Run deployment guide (env contract, OAuth)

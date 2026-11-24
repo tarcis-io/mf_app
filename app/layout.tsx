@@ -1,7 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
-import { headers } from "next/headers";
-import { Suspense } from "react";
 
 import { APP_DESCRIPTION, APP_NAME } from "@/lib/app-info";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
@@ -34,46 +32,13 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       suppressHydrationWarning
     >
       <head>
-        {/* Applies the saved theme before first paint (no flash). It's an inline
-            script, so under the app's nonce-based CSP it must carry this
-            request's nonce — read from the CSP header the proxy sets (see
-            `proxy.ts`). Isolated in its own Suspense boundary because reading
-            request headers is dynamic IO under cacheComponents; that also makes
-            the page resume per-request, which is what lets Next stamp the nonce
-            onto its streamed scripts. */}
-        <Suspense fallback={null}>
-          <ThemeInitScript />
-        </Suspense>
+        {/* Applies the saved theme before first paint (no flash). A static
+            inline script, allowed by the CSP's `script-src 'unsafe-inline'`
+            (see next.config.ts) — no nonce needed, so it can live in the
+            statically prerendered shell. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body className="min-h-full flex flex-col font-sans">{children}</body>
     </html>
   );
-}
-
-/**
- * Emits the inline theme-init script (see `@/lib/theme`) carrying this request's
- * CSP nonce, so it executes under the strict `script-src` policy. The nonce is
- * read from the `Content-Security-Policy` header the proxy sets on every page
- * request (see `proxy.ts`), so it's present in practice. If it were somehow
- * absent the script is still emitted but the CSP would block it, and an explicit
- * Light/Dark override wouldn't apply before paint — the "System" choice is
- * unaffected (it's pure CSS, see globals.css). Not a broken page, just a
- * possible flash for overridden themes.
- */
-async function ThemeInitScript() {
-  const nonce = extractNonce((await headers()).get("content-security-policy"));
-  return (
-    <script
-      nonce={nonce}
-      dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }}
-    />
-  );
-}
-
-/**
- * Pull the `script-src` nonce out of a CSP header value, or `undefined`.
- * Exported for direct unit testing.
- */
-export function extractNonce(csp: string | null): string | undefined {
-  return csp?.match(/'nonce-([^']+)'/)?.[1];
 }

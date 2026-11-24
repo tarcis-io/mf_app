@@ -19,7 +19,7 @@ vi.mock("@/auth", () => ({
   authorized,
 }));
 
-import proxy, { MATCHER_PATTERN, buildCsp, config, generateNonce } from "./proxy";
+import proxy, { MATCHER_PATTERN, config } from "./proxy";
 
 // Minimal stand-in for the augmented NextRequest the proxy reads: `auth`,
 // `headers`, `nextUrl`, and a `nextUrl.clone()` that yields a mutable URL.
@@ -70,74 +70,30 @@ describe("proxy", () => {
     expect(res).toBe(redirect);
   });
 
-  it("allows an authenticated user through with a per-request nonce CSP", () => {
+  it("allows an authenticated user through untouched", () => {
     authorized.mockReturnValue(true);
 
     const res = runProxy(makeRequest("/", true));
 
     // Not a redirect.
     expect(res.headers.get("Location")).toBeNull();
-
-    const csp = res.headers.get("Content-Security-Policy");
-    expect(csp).toBeTruthy();
-    // Strict script policy with a real nonce and strict-dynamic. The nonce is
-    // base64url (see generateNonce): only A–Za–z0–9-_, no +, /, or = padding.
-    const match = csp!.match(/script-src [^;]*'nonce-([A-Za-z0-9_-]+)'/);
-    expect(match).not.toBeNull();
-    const nonce = match![1]!;
-    expect(nonce).not.toMatch(/[+/=]/);
-    // 16 random bytes base64url-encode to 22 unpadded chars.
-    expect(nonce.length).toBe(22);
-    expect(csp).toContain("'strict-dynamic'");
-    expect(csp).toContain("object-src 'none'");
-    expect(csp).toContain("frame-ancestors 'none'");
+    // The proxy no longer sets the CSP — that's a static header from
+    // next.config.ts (so it also covers prerendered / CDN-cached responses the
+    // proxy's matcher never runs on). The proxy's only job here is auth.
+    expect(res.headers.get("Content-Security-Policy")).toBeNull();
   });
 
-  it("uses a fresh nonce on each request", () => {
+  it("forwards the request unchanged when allowed (no header rewriting)", () => {
     authorized.mockReturnValue(true);
 
-    const nonceOf = (res: Response) =>
-      res.headers.get("Content-Security-Policy")!.match(/'nonce-([^']+)'/)![1];
-
-    const first = nonceOf(runProxy(makeRequest("/", true)));
-    const second = nonceOf(runProxy(makeRequest("/", true)));
-
-    expect(first).not.toBe(second);
-  });
-
-  it("marks page responses no-store so the CDN can't cache a stale nonce", () => {
-    authorized.mockReturnValue(true);
-
-    // The nonce approach only works if every page request reaches the server to
-    // get a fresh matching nonce. On Firebase App Hosting a CDN-cached HTML
-    // response would pin one nonce into the markup forever while headers keep
-    // changing → every script blocked. `no-store` prevents that.
-    const res = runProxy(makeRequest("/", true));
-    const cacheControl = res.headers.get("Cache-Control");
-    expect(cacheControl).toContain("no-store");
-  });
-
-  it("writes the same CSP onto the forwarded request headers, not just the response", () => {
-    authorized.mockReturnValue(true);
-
-    // Capture the options the proxy passes to NextResponse.next so we can
-    // inspect the request headers it forwards. This dual-write is load-bearing:
-    // Next extracts the nonce from the *request's* CSP header to stamp its
-    // injected <script> tags, including every streamed __next_f chunk.
+    // The proxy used to rewrite request headers to carry a nonce; it no longer
+    // does. Assert NextResponse.next is called with no request-header override.
     const nextSpy = vi.spyOn(NextResponse, "next");
 
-    const res = runProxy(makeRequest("/", true));
+    runProxy(makeRequest("/", true));
 
     expect(nextSpy).toHaveBeenCalledOnce();
-    const requestHeaders = nextSpy.mock.calls[0]![0]?.request?.headers;
-    const requestCsp = requestHeaders?.get("Content-Security-Policy");
-    const responseCsp = res.headers.get("Content-Security-Policy");
-
-    expect(requestCsp).toBeTruthy();
-    // Request and response must carry the identical policy (same nonce).
-    expect(requestCsp).toBe(responseCsp);
-    // Pre-existing request headers are preserved, not dropped.
-    expect(requestHeaders?.get("x-existing")).toBe("kept");
+    expect(nextSpy.mock.calls[0]![0]).toBeUndefined();
 
     nextSpy.mockRestore();
   });
@@ -154,75 +110,12 @@ describe("proxy", () => {
   });
 });
 
-// Direct tests of the CSP builder. The end-to-end tests above assert a few
-// directives via the response; these pin the exact policy so a stray
-// 'unsafe-inline' (or a dropped directive) is caught at the source, not left to
-// surface as a subtle production CSP regression.
-describe("buildCsp", () => {
-  const nonce = "test-nonce-value";
-  const csp = buildCsp(nonce);
-  const directives = csp.split(";").map((d) => d.trim());
-
-  it("carries the given nonce with strict-dynamic and no inline/remote scripts", () => {
-    expect(csp).toContain(
-      `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
-    );
-    // The whole point of the nonce approach: scripts may never be inline- or
-    // host-allowlisted. 'strict-dynamic' ignores host/scheme allowlists, but an
-    // 'unsafe-inline' here would still be a real hole — guard against it.
-    const scriptSrc = directives.find((d) => d.startsWith("script-src"))!;
-    expect(scriptSrc).not.toContain("'unsafe-inline'");
-    expect(scriptSrc).not.toContain("http:");
-    expect(scriptSrc).not.toContain("https:");
-  });
-
-  it("locks down the high-risk sinks", () => {
-    // These directives most directly prevent injection / clickjacking.
-    expect(directives).toContain("default-src 'self'");
-    expect(directives).toContain("object-src 'none'");
-    expect(directives).toContain("base-uri 'self'");
-    expect(directives).toContain("frame-ancestors 'none'");
-    expect(directives).toContain("form-action 'self'");
-  });
-
-  it("keeps style-src 'unsafe-inline' (required by Next/React — do not tighten)", () => {
-    // Next/React inject un-nonce-able inline styles; removing this blanks the
-    // page. Documented in proxy.ts and DEPLOYMENT.md.
-    expect(directives).toContain("style-src 'self' 'unsafe-inline'");
-  });
-
-  it("does not allow remote images or connections by default", () => {
-    // The app renders no remote images and talks only to itself today. When
-    // mf_service is wired up, connect-src changes and this test should be
-    // updated deliberately (see the note in proxy.ts).
-    expect(directives).toContain("img-src 'self' data:");
-    expect(directives).toContain("connect-src 'self'");
-  });
-
-  it("interpolates the nonce rather than emitting a literal placeholder", () => {
-    expect(buildCsp("abc123")).toContain("'nonce-abc123'");
-    expect(buildCsp("abc123")).not.toContain("${nonce}");
-  });
-});
-
-describe("generateNonce", () => {
-  it("produces a 22-char base64url token (16 random bytes, no +/= padding)", () => {
-    const nonce = generateNonce();
-    expect(nonce).toMatch(/^[A-Za-z0-9_-]{22}$/);
-    expect(nonce).not.toMatch(/[+/=]/);
-  });
-
-  it("is unique across calls", () => {
-    const seen = new Set(Array.from({ length: 50 }, () => generateNonce()));
-    expect(seen.size).toBe(50);
-  });
-});
-
 // The matcher is a security boundary: it decides which routes get run through
-// auth + CSP. A regression here (e.g. accidentally excluding a page, or newly
-// running the Auth.js endpoints through the proxy) would be invisible in the
-// behavioral tests above, which call the proxy fn directly and never exercise
-// the matcher. So assert the pattern's routing decisions directly.
+// the auth gatekeeper. A regression here (e.g. accidentally excluding a page,
+// or newly running the Auth.js endpoints through the proxy) would be invisible
+// in the behavioral tests above, which call the proxy fn directly and never
+// exercise the matcher. So assert the pattern's routing decisions directly.
+// (The CSP is a static header in next.config.ts and is tested there, not here.)
 describe("config.matcher", () => {
   // Next.js applies the matcher body to the pathname. The pattern is
   // `/(<body>)`, so the capturing body is tested against the path with its

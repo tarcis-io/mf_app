@@ -56,9 +56,8 @@ function isExplicitTheme(value: string | null): value is ResolvedTheme {
  * try/catch because `localStorage` access can throw (private mode, disabled
  * storage) — a theme preference must never break the page load.
  *
- * NOTE: this executes inline, so under the app's nonce-based CSP the `<script>`
- * must carry the per-request nonce (see `proxy.ts` and how `app/layout.tsx`
- * injects it); without the nonce it would be blocked.
+ * NOTE: this executes inline. The app's CSP allows inline scripts via
+ * `script-src 'unsafe-inline'` (see next.config.ts), so it needs no nonce.
  */
 export const THEME_INIT_SCRIPT = `
 (function () {

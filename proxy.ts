@@ -3,69 +3,16 @@ import { NextResponse } from "next/server";
 import { auth, authorized } from "@/auth";
 
 /**
- * Build the Content-Security-Policy for a request, bound to a per-request
- * nonce. Notes on specific directives:
- *   - `script-src 'nonce-…' 'strict-dynamic'`: only scripts carrying this
- *     request's nonce (or loaded by one that does) may execute. This is the
- *     Next-native approach: Next stamps the nonce onto every inline script it
- *     emits — the bootstrap AND each streamed RSC-payload chunk
- *     (`self.__next_f.push(...)`) — when it reads the nonce off the request's
- *     CSP header (see the dual-write below). `'strict-dynamic'` lets those
- *     nonce'd scripts load the rest of the bundle. A hash-based policy was tried
- *     and abandoned: Next emits an unbounded, per-page/per-build set of inline
- *     streaming scripts, so no fixed hash list can cover them.
- *   - `style-src 'self' 'unsafe-inline'`: Next/React inject inline styles and
- *     style attributes that cannot carry a nonce; styles are a low-risk sink,
- *     so inline styles are allowed. (Scripts are not.)
- *   - `img-src 'self' data:`: same-origin images (e.g. the logo) and data: URIs
- *     (inlined SVG/icons). The app does not render remote images.
- *   - `connect-src 'self'`: the app makes same-origin requests only today. When
- *     wiring up mf_service (see DEPLOYMENT.md / README), add its origin here.
- *   - `frame-ancestors 'none'`: clickjacking protection (pairs with the static
- *     X-Frame-Options: DENY).
- *   - `form-action 'self'`: see the note in `proxy` below — this currently
- *     needs revisiting for the Google sign-in Server Action POST.
- *   - `upgrade-insecure-requests`: defense-in-depth for mixed content.
+ * Route-protection proxy (Next 16 proxy / middleware). It runs the shared
+ * `authorized` gatekeeper on every matched request and enforces its decision.
+ *
+ * It does NOT set the Content-Security-Policy. The CSP is static and lives in
+ * `next.config.ts` (applied via `headers()` at the framework layer), so it
+ * works on the statically prerendered / CDN-cached responses that this proxy's
+ * matcher never even runs on. (A per-request nonce CSP was tried here and
+ * abandoned: it can't match prerendered / Firebase App Hosting CDN-cached HTML.)
  */
-export function buildCsp(nonce: string): string {
-  const directives = [
-    `default-src 'self'`,
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
-    `style-src 'self' 'unsafe-inline'`,
-    `img-src 'self' data:`,
-    `font-src 'self'`,
-    `connect-src 'self'`,
-    `object-src 'none'`,
-    `base-uri 'self'`,
-    `form-action 'self'`,
-    `frame-ancestors 'none'`,
-    `frame-src 'none'`,
-    `upgrade-insecure-requests`,
-  ];
-  return directives.join("; ");
-}
-
-/**
- * Generate a fresh CSP nonce using only Web-standard APIs (`crypto` + `btoa`),
- * so it works in both the Edge and Node.js runtimes — `Buffer` is not reliably
- * available in middleware/proxy on Edge. 16 random bytes (128 bits of entropy),
- * base64url-encoded: the `+/=` of standard base64 are swapped for `-_` and the
- * padding dropped. The nonce is an opaque token (never decoded), and the
- * base64url charset avoids any layer that might mangle `+`, `/`, or `=` in an
- * HTTP header while staying within the CSP `base64-value` grammar.
- */
-export function generateNonce(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
-  return btoa(String.fromCharCode(...bytes))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-
 export default auth((req) => {
-  const nonce = generateNonce();
-  const csp = buildCsp(nonce);
-
   // Re-run the shared gatekeeper against the session Auth.js attached to the
   // request (`req.auth`). `authorized` returns a Response (redirect) or a
   // boolean. We must enforce every outcome *here*: once a middleware function
@@ -78,7 +25,6 @@ export default auth((req) => {
   } as Parameters<typeof authorized>[0]);
 
   // `/login` while authenticated → the callback returns a redirect Response.
-  // Honor it as-is (no CSP needed on a bare redirect).
   if (decision instanceof Response) {
     return decision;
   }
@@ -93,27 +39,8 @@ export default auth((req) => {
     return NextResponse.redirect(signInUrl);
   }
 
-  // Allowed through. Two things must happen for the nonce to work end-to-end:
-  //
-  // 1. The nonce travels on the *request's* `Content-Security-Policy` header —
-  //    that is where Next reads it (see next/dist/.../get-script-nonce-from-
-  //    header) to stamp its injected <script> tags, including every streamed
-  //    `self.__next_f.push(...)` RSC chunk. Without it on the request, those
-  //    scripts carry no nonce and `script-src 'nonce-…'` blocks them (a blank
-  //    page). We also set the CSP on the *response* so the browser enforces it.
-  //
-  // 2. The HTML must NOT be CDN-cached. On Firebase App Hosting a cached HTML
-  //    response would pin one request's nonce into the markup while every later
-  //    request gets a fresh nonce in its header → permanent mismatch. `no-store`
-  //    forces each page request to reach the server, which re-renders with that
-  //    request's nonce. This only covers page HTML; the proxy matcher already
-  //    excludes `/_next/static/*` and other assets, so they stay cacheable.
-  const requestHeaders = new Headers(req.headers);
-  requestHeaders.set("Content-Security-Policy", csp);
-  const response = NextResponse.next({ request: { headers: requestHeaders } });
-  response.headers.set("Content-Security-Policy", csp);
-  response.headers.set("Cache-Control", "private, no-store");
-  return response;
+  // Allowed through unchanged.
+  return NextResponse.next();
 });
 
 export const config = {
