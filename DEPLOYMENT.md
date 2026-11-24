@@ -26,10 +26,6 @@
 
 Store `AUTH_SECRET`, `AUTH_GOOGLE_ID`, and `AUTH_GOOGLE_SECRET` in **Secret Manager**, not as plaintext env vars (see [Deploy](#deploy-to-cloud-run)). `AUTH_URL`, `AUTH_TRUST_HOST`, and `MF_SERVICE_URL` are not sensitive and can be plain env vars.
 
-### Why `AUTH_URL` + `AUTH_TRUST_HOST` are mandatory on Cloud Run
-
-Cloud Run terminates TLS at its edge and forwards requests to the container over HTTP with `X-Forwarded-*` headers. Auth.js, for security, does not trust those headers by default — so it can't know the real external origin and will either reject the request (`UntrustedHost`) or construct an OAuth `redirect_uri` that doesn't match what you registered with Google. Setting `AUTH_TRUST_HOST=true` opts into trusting the proxy headers, and `AUTH_URL` pins the canonical origin used to build callback URLs. This is the single most common cause of "sign-in works locally but not in prod."
-
 ## Google OAuth setup
 
 In the [Google Cloud Console → Credentials](https://console.cloud.google.com/apis/credentials):

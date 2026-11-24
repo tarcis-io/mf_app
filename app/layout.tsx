@@ -68,7 +68,10 @@ async function ThemeInitScript() {
   );
 }
 
-/** Pull the `script-src` nonce out of a CSP header value, or `undefined`. */
-function extractNonce(csp: string | null): string | undefined {
+/**
+ * Pull the `script-src` nonce out of a CSP header value, or `undefined`.
+ * Exported for direct unit testing.
+ */
+export function extractNonce(csp: string | null): string | undefined {
   return csp?.match(/'nonce-([^']+)'/)?.[1];
 }

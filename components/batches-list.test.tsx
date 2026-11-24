@@ -15,24 +15,6 @@ vi.mock("@/app/batches/actions", () => ({
   deleteBatchAction,
 }));
 
-// jsdom (31.x) doesn't implement <dialog>.showModal()/close(); the dialogs use
-// them. Install the same minimal polyfill used by the dialog tests so opening a
-// dialog from a row action doesn't throw.
-function installDialogPolyfill() {
-  const proto = HTMLDialogElement.prototype;
-  if (!proto.showModal) {
-    proto.showModal = function (this: HTMLDialogElement) {
-      this.setAttribute("open", "");
-    };
-  }
-  if (!proto.close) {
-    proto.close = function (this: HTMLDialogElement) {
-      this.removeAttribute("open");
-      this.dispatchEvent(new Event("close"));
-    };
-  }
-}
-
 import { STATUS_COLORS } from "./batch-status";
 import BatchesList, { type BatchListItem } from "./batches-list";
 
@@ -69,7 +51,6 @@ function names() {
 }
 
 beforeEach(() => {
-  installDialogPolyfill();
   renameBatchAction.mockReset();
   deleteBatchAction.mockReset();
 });

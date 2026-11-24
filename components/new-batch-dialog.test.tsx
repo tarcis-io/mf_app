@@ -12,25 +12,6 @@ vi.mock("@/app/batches/actions", () => ({ createBatchAction }));
 
 import NewBatchDialog from "./new-batch-dialog";
 
-// jsdom (31.x) does not implement HTMLDialogElement.showModal()/close() or the
-// `open` reflection. Install a minimal faithful polyfill: showModal sets open +
-// shows, close hides + dispatches the native `close` event the component
-// listens for. Without this the component throws on open.
-function installDialogPolyfill() {
-  const proto = HTMLDialogElement.prototype;
-  if (!proto.showModal) {
-    proto.showModal = function (this: HTMLDialogElement) {
-      this.setAttribute("open", "");
-    };
-  }
-  if (!proto.close) {
-    proto.close = function (this: HTMLDialogElement) {
-      this.removeAttribute("open");
-      this.dispatchEvent(new Event("close"));
-    };
-  }
-}
-
 /** A dummy file with the given name (extension drives client-side validation). */
 function file(name: string) {
   return new File(["data"], name, { type: "text/plain" });
@@ -72,7 +53,6 @@ function fillValidForm() {
 }
 
 beforeEach(() => {
-  installDialogPolyfill();
   createBatchAction.mockReset();
   createBatchAction.mockResolvedValue({ ok: true });
 });
@@ -281,6 +261,34 @@ describe("NewBatchDialog", () => {
       // A generic failure is not a name problem, so the field isn't flagged.
       expect(screen.getByLabelText("Name")).not.toHaveAttribute("aria-invalid");
     });
+  });
+
+  it("shows a pending label and disables Cancel while the action is in flight", async () => {
+    // Hold the action unresolved so the in-flight (pending) UI is observable:
+    // with an immediately-resolving mock the transition never renders mid-flight.
+    let resolve!: (value: { ok: boolean }) => void;
+    createBatchAction.mockReturnValue(
+      new Promise((r) => {
+        resolve = r;
+      }),
+    );
+    render(<NewBatchDialog />);
+    openDialog();
+    fillValidForm();
+
+    submitForm();
+
+    // Mid-flight: the submit button shows the pending label and Cancel is
+    // disabled so the dialog can't be dismissed out from under the request.
+    const submit = await screen.findByRole("button", { name: /creating/i });
+    expect(submit).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+
+    // Resolve → the dialog closes.
+    resolve({ ok: true });
+    await vi.waitFor(() =>
+      expect(dialogEl().hasAttribute("open")).toBe(false),
+    );
   });
 
   it("resets the form (name + files cleared) after closing and reopening", () => {

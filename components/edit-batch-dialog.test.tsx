@@ -9,22 +9,6 @@ vi.mock("@/app/batches/actions", () => ({ renameBatchAction }));
 
 import EditBatchDialog from "./edit-batch-dialog";
 
-// jsdom (31.x) lacks <dialog>.showModal()/close(); the shared Dialog uses them.
-function installDialogPolyfill() {
-  const proto = HTMLDialogElement.prototype;
-  if (!proto.showModal) {
-    proto.showModal = function (this: HTMLDialogElement) {
-      this.setAttribute("open", "");
-    };
-  }
-  if (!proto.close) {
-    proto.close = function (this: HTMLDialogElement) {
-      this.removeAttribute("open");
-      this.dispatchEvent(new Event("close"));
-    };
-  }
-}
-
 const BATCH = { id: "batch-1", name: "Spring run" };
 
 function dialogEl(): HTMLDialogElement {
@@ -37,7 +21,6 @@ function submitForm() {
 }
 
 beforeEach(() => {
-  installDialogPolyfill();
   renameBatchAction.mockReset();
   renameBatchAction.mockResolvedValue({ ok: true });
 });
@@ -159,6 +142,29 @@ describe("EditBatchDialog", () => {
     fireEvent.click(dialogEl());
 
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("shows a pending label and disables Cancel while renaming is in flight", async () => {
+    // Hold the action unresolved so the in-flight UI renders (an immediately
+    // resolving mock never shows the pending state).
+    let resolve!: (value: { ok: boolean }) => void;
+    renameBatchAction.mockReturnValue(
+      new Promise((r) => {
+        resolve = r;
+      }),
+    );
+    const onDone = vi.fn();
+    render(<EditBatchDialog batch={BATCH} open onClose={vi.fn()} onDone={onDone} />);
+
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "X" } });
+    submitForm();
+
+    const submit = await screen.findByRole("button", { name: /saving/i });
+    expect(submit).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+
+    resolve({ ok: true });
+    await vi.waitFor(() => expect(onDone).toHaveBeenCalledOnce());
   });
 
   it("renders no dialog content when closed", () => {

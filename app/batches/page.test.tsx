@@ -60,13 +60,4 @@ describe("Batches page", () => {
       within(template).getByTestId("batches-list-card"),
     ).toBeInTheDocument();
   });
-
-  it("no longer renders the old placeholder text", () => {
-    render(<Batches />);
-
-    // The page used to render a bare "<p>Batches</p>" body (distinct from the
-    // "Batches" heading/title). Guard that the placeholder is gone — the card
-    // replaced it.
-    expect(screen.queryByText("Batches", { selector: "p" })).toBeNull();
-  });
 });

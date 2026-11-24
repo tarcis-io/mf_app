@@ -9,22 +9,6 @@ vi.mock("@/app/batches/actions", () => ({ deleteBatchAction }));
 
 import DeleteBatchDialog from "./delete-batch-dialog";
 
-// jsdom (31.x) lacks <dialog>.showModal()/close(); the shared Dialog uses them.
-function installDialogPolyfill() {
-  const proto = HTMLDialogElement.prototype;
-  if (!proto.showModal) {
-    proto.showModal = function (this: HTMLDialogElement) {
-      this.setAttribute("open", "");
-    };
-  }
-  if (!proto.close) {
-    proto.close = function (this: HTMLDialogElement) {
-      this.removeAttribute("open");
-      this.dispatchEvent(new Event("close"));
-    };
-  }
-}
-
 const BATCH = { id: "batch-1", name: "Spring run" };
 
 function dialogEl(): HTMLDialogElement {
@@ -32,7 +16,6 @@ function dialogEl(): HTMLDialogElement {
 }
 
 beforeEach(() => {
-  installDialogPolyfill();
   deleteBatchAction.mockReset();
   deleteBatchAction.mockResolvedValue({ ok: true });
 });
@@ -78,6 +61,29 @@ describe("DeleteBatchDialog", () => {
     await vi.waitFor(() =>
       expect(deleteBatchAction).toHaveBeenCalledWith("batch-1"),
     );
+    await vi.waitFor(() => expect(onDone).toHaveBeenCalledOnce());
+  });
+
+  it("shows a pending label and disables Cancel while deleting is in flight", async () => {
+    // Hold the action unresolved so the in-flight UI renders.
+    let resolve!: (value: { ok: boolean }) => void;
+    deleteBatchAction.mockReturnValue(
+      new Promise((r) => {
+        resolve = r;
+      }),
+    );
+    const onDone = vi.fn();
+    render(
+      <DeleteBatchDialog batch={BATCH} open onClose={vi.fn()} onDone={onDone} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /delete batch/i }));
+
+    const confirm = await screen.findByRole("button", { name: /deleting/i });
+    expect(confirm).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+
+    resolve({ ok: true });
     await vi.waitFor(() => expect(onDone).toHaveBeenCalledOnce());
   });
 

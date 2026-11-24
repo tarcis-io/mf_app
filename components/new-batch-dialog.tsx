@@ -288,6 +288,8 @@ function FileField({
   onChange: (file: File | undefined) => void;
 }) {
   const id = useId();
+  const hintId = useId();
+  const invalid = chosen !== undefined && !chosen.valid;
   return (
     <div className="flex flex-col gap-1">
       <label htmlFor={id} className="text-sm text-foreground/80">
@@ -300,11 +302,16 @@ function FileField({
         type="file"
         required
         accept={accept}
+        // When the chosen file has the wrong extension, mark the field invalid
+        // and tie it to the hint below so screen readers announce the problem
+        // (the hint is otherwise just adjacent red text).
+        aria-invalid={invalid || undefined}
+        aria-describedby={invalid ? hintId : undefined}
         onChange={(event) => onChange(event.target.files?.[0] ?? undefined)}
         className="block w-full cursor-pointer text-sm text-foreground/70 file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-foreground/[.06] file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground/80 hover:file:bg-foreground/[.1] focus-visible:outline-none"
       />
-      {chosen && !chosen.valid ? (
-        <span className="text-xs text-[#b91c1c]">
+      {invalid ? (
+        <span id={hintId} className="text-xs text-[#b91c1c]">
           Expected a {accept} file.
         </span>
       ) : null}

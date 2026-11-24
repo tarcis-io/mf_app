@@ -16,15 +16,11 @@ pnpm setup    # scaffold a ready-to-run .env.local
 pnpm dev      # http://localhost:3000
 ```
 
-`pnpm setup` writes a `.env.local` you can run immediately: it generates an
-`AUTH_SECRET` and enables the dev-only login (`AUTH_DEV_LOGIN=true`), so
-`pnpm dev` boots with no Google setup — the login page shows a "Continue as dev
-user" button. It never overwrites an existing `.env.local`.
-
-To use real Google sign-in instead, add the OAuth credentials (see
-[Google OAuth setup](#google-oauth-setup)) and comment `AUTH_DEV_LOGIN` back out.
-Dev-login is ignored in production regardless (see
-[Local dev without Google](#local-dev-without-google)).
+`pnpm setup` scaffolds a ready-to-run `.env.local` (a generated `AUTH_SECRET`
+plus dev-login enabled) so `pnpm dev` boots with no Google setup; it never
+overwrites an existing file. See [Local dev without Google](#local-dev-without-google)
+for how that works, or [Google OAuth setup](#google-oauth-setup) to use real
+sign-in instead.
 
 ## Authentication
 
@@ -64,10 +60,10 @@ committed.
 `AUTH_SECRET` is required in every environment; `AUTH_GOOGLE_ID` and
 `AUTH_GOOGLE_SECRET` are required too **unless** the dev-only login is enabled
 (see [Local dev without Google](#local-dev-without-google) below). The app
-**fails fast at startup** if a required variable is missing (see `env.ts`). In
-production (e.g. Cloud Run) you must also set `AUTH_URL`, `AUTH_TRUST_HOST=true`,
-and `MF_SERVICE_URL` (the `mf_service` base URL — see [Backend](#backend)) — see
-[Deployment](#deployment) and [`DEPLOYMENT.md`](./DEPLOYMENT.md).
+**fails fast at startup** if a required variable is missing (see `env.ts`).
+Production adds a few more required variables (`AUTH_URL`, `AUTH_TRUST_HOST`,
+`MF_SERVICE_URL`); [`DEPLOYMENT.md`](./DEPLOYMENT.md) is the source of truth for
+the full contract.
 
 ### Local dev without Google
 
@@ -91,13 +87,13 @@ stubbed — no services or secrets required.
 
 ## Run
 
+`pnpm dev` (see [Install](#install)) runs the dev server with hot reload. For a
+production build:
+
 ```bash
-pnpm dev     # start the development server with hot reload
 pnpm build   # production build
 pnpm start   # run the production build
 ```
-
-The dev server listens on [http://localhost:3000](http://localhost:3000).
 
 ## Deployment
 

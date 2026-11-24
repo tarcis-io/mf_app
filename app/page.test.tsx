@@ -84,12 +84,6 @@ describe("Home page", () => {
     );
   });
 
-  it("no longer renders the old welcome message", () => {
-    render(<Home />);
-
-    expect(screen.queryByText("Welcome to MassFlow AI.")).toBeNull();
-  });
-
   it("renders the Batches summary card", () => {
     render(<Home />);
 

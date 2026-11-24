@@ -40,6 +40,7 @@ vi.mock("next/link", () => ({
   ),
 }));
 
+import { STATUS_COLORS, STATUS_LABELS } from "./batch-status";
 import BatchesCard from "./batches-card";
 
 function makeBatch(status: Batch["status"]): Batch {
@@ -163,20 +164,17 @@ describe("BatchesCard", () => {
     await renderCard();
 
     const card = screen.getByRole("region", { name: "Batches" });
-    // One dot per status row, each carrying its semantic color inline.
-    const expected: Record<string, string> = {
-      Creating: "rgb(148, 163, 184)", // slate #94a3b8
-      Created: "rgb(59, 130, 246)", // blue #3b82f6
-      Processing: "rgb(245, 158, 11)", // amber #f59e0b
-      Processed: "rgb(34, 197, 94)", // green #22c55e
-      Error: "rgb(239, 68, 68)", // red #ef4444
-    };
-    for (const [label, color] of Object.entries(expected)) {
+    // One dot per status row, each carrying its status's semantic color inline.
+    // Derive the expectations from the source maps (STATUS_LABELS/STATUS_COLORS)
+    // so a palette change updates the test automatically instead of breaking it.
+    for (const [status, label] of Object.entries(STATUS_LABELS)) {
       const row = within(card).getByText(label).closest("div")!;
       // The dot is the decorative span inside the row's <dt>.
       const dot = row.querySelector('span[aria-hidden="true"]');
       expect(dot).not.toBeNull();
-      expect(dot).toHaveStyle({ backgroundColor: color });
+      expect(dot).toHaveStyle({
+        backgroundColor: STATUS_COLORS[status as keyof typeof STATUS_COLORS],
+      });
     }
   });
 

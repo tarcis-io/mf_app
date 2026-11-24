@@ -26,7 +26,9 @@ const securityHeaders = [
   // Deny access to powerful features the app doesn't use.
   {
     key: "Permissions-Policy",
-    value: "camera=(), microphone=(), geolocation=(), browsing-topics=()",
+    value:
+      "camera=(), microphone=(), geolocation=(), browsing-topics=(), " +
+      "payment=(), usb=(), accelerometer=(), gyroscope=(), magnetometer=()",
   },
   // Isolate the browsing context from cross-origin windows.
   { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
@@ -37,6 +39,13 @@ const nextConfig: NextConfig = {
   // Emit a self-contained production server under `.next/standalone/` (minimal
   // server.js + only the node_modules actually used).
   output: "standalone",
+  // Don't advertise the framework (drops the `X-Powered-By: Next.js` header).
+  poweredByHeader: false,
+  // The only images are local static SVGs (the logo), which the optimizer
+  // doesn't process anyway. Disabling it avoids invoking the on-the-fly
+  // optimizer at runtime (pairs with `sharp: false` in pnpm-workspace.yaml); add
+  // `remotePatterns` here if remote images are ever introduced.
+  images: { unoptimized: true },
   // Enable Cache Components (`use cache`, `cacheLife`/`cacheTag`, Partial
   // Prerendering). Required for `partialPrefetching` below.
   cacheComponents: true,

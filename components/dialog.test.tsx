@@ -1,27 +1,11 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { useState } from "react";
 
 import Dialog from "./dialog";
 
-// jsdom (31.x) lacks <dialog>.showModal()/close(); the shared Dialog uses them.
-// Mirror the polyfill the feature-dialog tests install: showModal() reflects the
-// `open` attribute, and close() clears it AND dispatches the native `close`
-// event (which the component listens for to notify its parent).
-function installDialogPolyfill() {
-  const proto = HTMLDialogElement.prototype;
-  if (!proto.showModal) {
-    proto.showModal = function (this: HTMLDialogElement) {
-      this.setAttribute("open", "");
-    };
-  }
-  if (!proto.close) {
-    proto.close = function (this: HTMLDialogElement) {
-      this.removeAttribute("open");
-      this.dispatchEvent(new Event("close"));
-    };
-  }
-}
+// Note: jsdom lacks <dialog>.showModal()/close(); the polyfill the Dialog needs
+// is installed globally in vitest.setup.ts.
 
 function dialogEl(): HTMLDialogElement {
   return document.querySelector("dialog") as HTMLDialogElement;
@@ -55,10 +39,6 @@ function Harness({
     </Dialog>
   );
 }
-
-beforeEach(() => {
-  installDialogPolyfill();
-});
 
 afterEach(() => {
   vi.clearAllMocks();
