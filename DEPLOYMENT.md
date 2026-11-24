@@ -167,12 +167,19 @@ The directive-by-directive rationale (and the note on adding `mf_service`'s orig
 
 `mf_app` calls `mf_service` **server-side** (never from the browser), and in
 production authenticates those calls with a Google-signed **OIDC ID token**
-rather than leaving `mf_service` open. The token is obtained with
-[`google-auth-library`](https://github.com/googleapis/google-auth-library-nodejs):
-on Cloud Run it's minted from the metadata server for mf-app's attached service
-account, with the token **audience** set to `MF_SERVICE_URL`. mf-app attaches it
-as `Authorization: Bearer <token>`; Cloud Run's front end validates it before the
-request ever reaches `mf_service`. (See `lib/mf-service.ts`.)
+rather than leaving `mf_service` open. The token is fetched directly from the
+Cloud Run **metadata server** — no SDK or extra dependency — by a plain request to
+
+```
+GET http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=<MF_SERVICE_URL>
+Metadata-Flavor: Google
+```
+
+which returns a token for mf-app's attached service account with the **audience**
+set to `MF_SERVICE_URL`. mf-app caches the token until shortly before it expires,
+and attaches it as `Authorization: Bearer <token>`; Cloud Run's front end
+validates it before the request ever reaches `mf_service`. (See
+`lib/mf-service.ts`.)
 
 This is distinct from the per-user `X-User-Id` header mf-app also sends: the ID
 token authenticates **the mf-app service** to Cloud Run, while `X-User-Id`

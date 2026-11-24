@@ -121,10 +121,10 @@ route-protection. When `mf_service` is wired up, add its origin to the CSP
 `connect-src` directive in `next.config.ts`.
 
 **Service-to-service calls.** In production, every request `mf_app` makes to
-`mf_service` carries a Google-signed OIDC ID token (via `google-auth-library`,
-minted from the Cloud Run metadata server for mf-app's service account, with the
-audience set to `MF_SERVICE_URL`). This lets `mf_service` run privately and
-accept calls only from mf-app — see `lib/mf-service.ts` and
+`mf_service` carries a Google-signed OIDC ID token, fetched directly from the
+Cloud Run metadata server (no external dependency) for mf-app's service account,
+with the audience set to `MF_SERVICE_URL`. This lets `mf_service` run privately
+and accept calls only from mf-app — see `lib/mf-service.ts` and
 [`DEPLOYMENT.md`](./DEPLOYMENT.md#service-to-service-authentication) (including
 the `roles/run.invoker` grant). It's separate from the per-user `X-User-Id`
 header: the token authenticates the service, `X-User-Id` identifies the end

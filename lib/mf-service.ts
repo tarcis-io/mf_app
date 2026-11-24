@@ -21,10 +21,10 @@
  * the ID token authenticates *the mf_app service* to Cloud Run's front end,
  * while `X-User-Id` identifies *the end user* to mf_service's own logic. Token
  * minting is skipped outside production (local dev talks to an unauthenticated
- * mf_service), so no Google credentials are needed to run locally.
+ * mf_service), so no Google credentials are needed to run locally. The token is
+ * fetched directly from the Cloud Run metadata server (no external dependency);
+ * see {@link authHeaders}.
  */
-
-import { GoogleAuth, type IdTokenClient } from "google-auth-library";
 
 /**
  * The lifecycle states of a batch, from `mf_service`'s `BatchStatus` enum. The
@@ -135,50 +135,145 @@ function isProduction(): boolean {
 }
 
 /**
- * Lazily-created Auth.js-independent Google auth handle, shared across requests.
- * `GoogleAuth` resolves Application Default Credentials — on Cloud Run that's
- * the metadata server, which hands out ID tokens for the attached service
- * account. Created once (not per call) so the underlying credential and its
- * token cache are reused.
+ * The GCE/Cloud Run metadata server endpoint that mints an OIDC ID token for the
+ * instance's attached service account. `?audience=` sets the token's `aud`
+ * claim; `format=full` includes the service-account email / project claims. The
+ * request MUST carry the `Metadata-Flavor: Google` header — the server rejects
+ * requests without it (an SSRF guard). Available only on Google compute
+ * platforms; unreachable locally, which is why token minting is gated to
+ * production. No SDK is used — a plain fetch keeps this dependency-free.
  */
-let googleAuth: GoogleAuth | undefined;
+const METADATA_IDENTITY_URL =
+  "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity";
+const METADATA_HEADER = { "Metadata-Flavor": "Google" } as const;
 
 /**
- * Cache of ID-token clients keyed by audience. `getIdTokenClient` does real work
- * (it primes a credential), and each client caches and auto-refreshes the token
- * it mints, so we keep one client per audience for the process's lifetime rather
- * than rebuilding it on every request. In practice there is a single audience
- * (the mf_service base URL), but keying by audience keeps this correct if that
- * ever changes.
+ * Refresh an ID token this many ms before it actually expires, so a token that's
+ * about to lapse isn't handed to a request that then races the clock. ID tokens
+ * are valid ~1h; a 5-minute skew is comfortably safe.
  */
-const idTokenClients = new Map<string, Promise<IdTokenClient>>();
+const TOKEN_REFRESH_SKEW_MS = 5 * 60 * 1000;
 
-function idTokenClientFor(audience: string): Promise<IdTokenClient> {
-  const cached = idTokenClients.get(audience);
-  if (cached) return cached;
+/**
+ * Fallback lifetime used only when a token's `exp` claim can't be parsed. The
+ * token is almost certainly valid for ~1h, but without a trustworthy `exp` we
+ * cache it conservatively and re-fetch sooner.
+ */
+const TOKEN_FALLBACK_TTL_MS = 10 * 60 * 1000;
 
-  googleAuth ??= new GoogleAuth();
-  // Store the promise (not the resolved client) so concurrent first calls share
-  // one in-flight client creation instead of racing to build several. If it
-  // rejects, drop it from the cache so a later call can retry rather than being
-  // stuck with a permanently-failed promise.
-  const clientPromise = googleAuth
-    .getIdTokenClient(audience)
-    .catch((error: unknown) => {
-      idTokenClients.delete(audience);
-      throw error;
-    });
-  idTokenClients.set(audience, clientPromise);
-  return clientPromise;
+/** A cached token and the epoch-ms moment it should be considered stale at. */
+interface CachedToken {
+  token: string;
+  /** When to refresh — the real `exp` minus {@link TOKEN_REFRESH_SKEW_MS}. */
+  refreshAt: number;
+}
+
+/**
+ * Per-audience token cache. The metadata server would serve a fresh token on
+ * every call, but that's a network round-trip per request; we hold the token
+ * until shortly before it expires. Keyed by audience (one entry in practice —
+ * the mf_service base URL — but correct if that ever varies).
+ */
+const tokenCache = new Map<string, CachedToken>();
+
+/**
+ * In-flight fetches, keyed by audience, so concurrent cache misses share a
+ * single metadata request instead of stampeding the server.
+ */
+const inFlight = new Map<string, Promise<string>>();
+
+/**
+ * Read the `exp` (seconds since epoch) from a JWT without verifying it — we
+ * trust it because it came straight from the metadata server; we only need to
+ * know when to refresh. Returns the refresh deadline in epoch ms, or `null` if
+ * the token isn't a parseable JWT with a numeric `exp`.
+ */
+function refreshDeadlineFromToken(token: string): number | null {
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  try {
+    // Base64url → JSON. `atob` handles the decoding; restore url-safe chars.
+    const payloadJson = atob(parts[1]!.replace(/-/g, "+").replace(/_/g, "/"));
+    const payload: unknown = JSON.parse(payloadJson);
+    const exp =
+      typeof payload === "object" &&
+      payload !== null &&
+      typeof (payload as { exp?: unknown }).exp === "number"
+        ? (payload as { exp: number }).exp
+        : null;
+    if (exp === null) return null;
+    return exp * 1000 - TOKEN_REFRESH_SKEW_MS;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetch a fresh ID token for `audience` from the metadata server. Capped at
+ * `REQUEST_TIMEOUT_MS` like the service calls, so a wedged metadata server can't
+ * hang the render. Throws on a non-2xx response or an empty body.
+ */
+async function fetchIdTokenFromMetadata(audience: string): Promise<string> {
+  const url = `${METADATA_IDENTITY_URL}?audience=${encodeURIComponent(
+    audience,
+  )}&format=full`;
+
+  const response = await fetch(url, {
+    headers: METADATA_HEADER,
+    cache: "no-store",
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `metadata server returned ${response.status} ${response.statusText}`,
+    );
+  }
+
+  const token = (await response.text()).trim();
+  if (token === "") {
+    throw new Error("metadata server returned an empty token");
+  }
+  return token;
+}
+
+/**
+ * Return a valid ID token for `audience`, from cache when fresh, otherwise
+ * fetched from the metadata server and cached until shortly before it expires.
+ * Concurrent misses share one in-flight request.
+ */
+async function getIdToken(audience: string): Promise<string> {
+  const cached = tokenCache.get(audience);
+  if (cached && Date.now() < cached.refreshAt) {
+    return cached.token;
+  }
+
+  const existing = inFlight.get(audience);
+  if (existing) return existing;
+
+  const request = (async () => {
+    try {
+      const token = await fetchIdTokenFromMetadata(audience);
+      const refreshAt =
+        refreshDeadlineFromToken(token) ?? Date.now() + TOKEN_FALLBACK_TTL_MS;
+      tokenCache.set(audience, { token, refreshAt });
+      return token;
+    } finally {
+      inFlight.delete(audience);
+    }
+  })();
+  inFlight.set(audience, request);
+  return request;
 }
 
 /**
  * Build the auth headers for a call to mf_service.
  *
  * Outside production: returns `{}` — no token, since local mf_service is
- * unauthenticated. In production: mints a Google-signed OIDC ID token whose
- * audience is `audience` (the mf_service base URL — exactly what Cloud Run's
- * front end validates) and returns it as a Bearer `Authorization` header.
+ * unauthenticated. In production: obtains a Google-signed OIDC ID token for
+ * `audience` (the mf_service base URL — exactly what Cloud Run's front end
+ * validates) from the metadata server and returns it as a Bearer `Authorization`
+ * header.
  *
  * Fails loudly: if the token can't be obtained in production this rejects, so
  * the caller surfaces its error state rather than sending an unauthenticated
@@ -193,14 +288,14 @@ async function authHeaders(audience: string): Promise<Record<string, string>> {
   if (!isProduction()) return {};
 
   try {
-    const client = await idTokenClientFor(audience);
-    const token = await client.idTokenProvider.fetchIdToken(audience);
+    const token = await getIdToken(audience);
     return { Authorization: `Bearer ${token}` };
   } catch (error) {
     throw new Error(
       `Failed to obtain a Google ID token for mf_service (audience ${audience}). ` +
-        `On Cloud Run, ensure the service account can mint ID tokens and is ` +
-        `granted the Cloud Run Invoker role on mf_service (see DEPLOYMENT.md).`,
+        `On Cloud Run, ensure the service runs with a service account that has ` +
+        `the Cloud Run Invoker role on mf_service, and that the metadata server ` +
+        `is reachable (see DEPLOYMENT.md).`,
       { cause: error },
     );
   }

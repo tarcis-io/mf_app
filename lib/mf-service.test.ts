@@ -1,25 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-// Mock google-auth-library so the service-to-service auth path can be driven
-// without real Google credentials or the metadata server. `fetchIdToken`
-// returns a canned token; `getIdTokenClient` is a spy so client reuse (caching)
-// can be asserted. Tests reconfigure these per case (e.g. make fetchIdToken
-// reject). Hoisted so the mock is wired before `./mf-service` is imported.
-const { fetchIdToken, getIdTokenClient, GoogleAuth } = vi.hoisted(() => {
-  const fetchIdToken = vi.fn(async () => "fake-id-token");
-  const getIdTokenClient = vi.fn(async () => ({
-    idTokenProvider: { fetchIdToken },
-  }));
-  // Must be a regular function (not an arrow): the code calls `new GoogleAuth()`,
-  // and arrow functions aren't constructable. Returning an object from a
-  // constructor makes `new` yield that object, so `new GoogleAuth()` gives
-  // `{ getIdTokenClient }`. Kept as a vi.fn so call counts can be asserted.
-  const GoogleAuth = vi.fn(function () {
-    return { getIdTokenClient };
-  });
-  return { fetchIdToken, getIdTokenClient, GoogleAuth };
-});
-vi.mock("google-auth-library", () => ({ GoogleAuth }));
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type MockInstance,
+} from "vitest";
 
 import {
   BATCH_FILE_FIELDS,
@@ -706,33 +693,64 @@ describe("deleteBatch", () => {
   });
 });
 
-describe("service-to-service auth (Google ID token)", () => {
+describe("service-to-service auth (Google ID token via metadata server)", () => {
   const BASE = "https://mf-service.massflow.ai";
+  const METADATA_HOST = "metadata.google.internal";
 
-  // These tests toggle NODE_ENV and rely on the module-level ID-token-client
-  // cache in mf-service.ts. Reset the module registry before each so every test
-  // starts with an empty cache and a clean view of the google-auth mocks, then
-  // import a fresh copy of the module (the google-auth-library mock is hoisted,
-  // so it re-applies to the fresh import). Mirrors the resetModules pattern in
+  // The module caches tokens at module scope, so reset the registry and import a
+  // fresh copy per test for a clean cache. Mirrors the resetModules pattern in
   // auth.test.ts.
   async function freshModule() {
     vi.resetModules();
     return import("./mf-service");
   }
 
+  /** Build a (syntactically real) JWT whose `exp` is `secondsFromNow` ahead. */
+  function makeJwt(secondsFromNow = 3600): string {
+    const b64url = (obj: unknown) =>
+      Buffer.from(JSON.stringify(obj))
+        .toString("base64")
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/, "");
+    const exp = Math.floor(Date.now() / 1000) + secondsFromNow;
+    return `${b64url({ alg: "RS256", typ: "JWT" })}.${b64url({
+      aud: BASE,
+      exp,
+    })}.signature`;
+  }
+
+  const isMetadataCall = (input: unknown) =>
+    typeof input === "string" && input.includes(METADATA_HOST);
+
+  /**
+   * Install a `fetch` mock that answers the metadata identity request with
+   * `token` and every other request with `serviceResponse()`. Returns the spy so
+   * tests can inspect calls. `serviceResponse` is a factory so each mf_service
+   * call gets a fresh Response (a body can only be read once).
+   */
+  function stubFetch(
+    token: string | (() => string),
+    serviceResponse: () => Response = () => new Response("[]", { status: 200 }),
+  ) {
+    return vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (input: unknown) => {
+        if (isMetadataCall(input)) {
+          const value = typeof token === "function" ? token() : token;
+          return new Response(value, { status: 200 });
+        }
+        return serviceResponse();
+      });
+  }
+
+  /** The metadata calls among a fetch spy's calls. */
+  function metadataCalls(fetchMock: MockInstance<typeof fetch>) {
+    return fetchMock.mock.calls.filter((call) => isMetadataCall(call[0]));
+  }
+
   beforeEach(() => {
     vi.stubEnv("MF_SERVICE_URL", BASE);
-    // Re-establish the full mock implementations each test. `vi.restoreAllMocks`
-    // in afterEach (needed to undo the per-test `vi.spyOn(fetch)`) also strips
-    // these hoisted mocks' implementations, so set all three here rather than
-    // relying on the one-time `vi.hoisted` defaults surviving between tests.
-    fetchIdToken.mockReset().mockResolvedValue("fake-id-token");
-    getIdTokenClient
-      .mockReset()
-      .mockResolvedValue({ idTokenProvider: { fetchIdToken } });
-    GoogleAuth.mockReset().mockImplementation(function () {
-      return { getIdTokenClient };
-    });
   });
 
   afterEach(() => {
@@ -741,7 +759,7 @@ describe("service-to-service auth (Google ID token)", () => {
     vi.resetModules();
   });
 
-  it("does NOT attach an Authorization header outside production (and never touches Google)", async () => {
+  it("does NOT attach an Authorization header outside production (never calls the metadata server)", async () => {
     vi.stubEnv("NODE_ENV", "development");
     const { listBatches } = await freshModule();
 
@@ -753,28 +771,39 @@ describe("service-to-service auth (Google ID token)", () => {
 
     const headers = new Headers(fetchMock.mock.calls[0]![1]?.headers);
     expect(headers.get("Authorization")).toBeNull();
-    // The whole google-auth machinery must stay dormant locally.
-    expect(GoogleAuth).not.toHaveBeenCalled();
-    expect(getIdTokenClient).not.toHaveBeenCalled();
-    expect(fetchIdToken).not.toHaveBeenCalled();
+    // Only the mf_service call happened — the metadata server is never touched.
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(metadataCalls(fetchMock)).toHaveLength(0);
   });
 
-  it("attaches a Bearer ID token in production, with the mf_service base URL as the audience", async () => {
+  it("fetches a token from the metadata server and attaches it as a Bearer header in production", async () => {
     vi.stubEnv("NODE_ENV", "production");
     const { listBatches } = await freshModule();
 
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValue(new Response("[]", { status: 200 }));
+    const token = makeJwt();
+    const fetchMock = stubFetch(token);
 
     await listBatches("user-123");
 
-    const headers = new Headers(fetchMock.mock.calls[0]![1]?.headers);
-    expect(headers.get("Authorization")).toBe("Bearer fake-id-token");
-    // Both the client and the token must be minted for the base URL audience.
-    expect(getIdTokenClient).toHaveBeenCalledWith(BASE);
-    expect(fetchIdToken).toHaveBeenCalledWith(BASE);
-    // The per-user header still rides alongside the service token.
+    // The metadata request: correct identity URL, audience = the mf_service base
+    // URL, and the mandatory Metadata-Flavor header.
+    const metadata = metadataCalls(fetchMock)[0]!;
+    const url = metadata[0] as string;
+    expect(url).toContain(
+      "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity",
+    );
+    expect(url).toContain(`audience=${encodeURIComponent(BASE)}`);
+    expect(new Headers(metadata[1]?.headers).get("Metadata-Flavor")).toBe(
+      "Google",
+    );
+
+    // The mf_service call carries the token as a Bearer header, alongside the
+    // per-user X-User-Id.
+    const serviceCall = fetchMock.mock.calls.find(
+      ([input]) => !isMetadataCall(input),
+    )!;
+    const headers = new Headers(serviceCall[1]?.headers);
+    expect(headers.get("Authorization")).toBe(`Bearer ${token}`);
     expect(headers.get("X-User-Id")).toBe("user-123");
   });
 
@@ -782,67 +811,101 @@ describe("service-to-service auth (Google ID token)", () => {
     vi.stubEnv("NODE_ENV", "production");
     const { createBatch, getServiceInfo } = await freshModule();
 
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValue(
-        new Response(JSON.stringify(makeBatch()), { status: 201 }),
-      );
-
-    await createBatch("user-123", "Spring run", makeFiles());
-    expect(
-      new Headers(fetchMock.mock.calls[0]![1]?.headers).get("Authorization"),
-    ).toBe("Bearer fake-id-token");
-
-    fetchMock.mockResolvedValue(
+    const token = makeJwt();
+    const fetchMock = stubFetch(token, () =>
       new Response(
         JSON.stringify({
-          name: "mf_service",
-          description: "d",
+          ...makeBatch(),
           version: "0.1.0",
           engine_version: "0.1.0",
         }),
         { status: 200 },
       ),
     );
+
+    await createBatch("user-123", "Spring run", makeFiles());
     await getServiceInfo();
-    expect(
-      new Headers(fetchMock.mock.calls[1]![1]?.headers).get("Authorization"),
-    ).toBe("Bearer fake-id-token");
+
+    const serviceCalls = fetchMock.mock.calls.filter(
+      ([input]) => !isMetadataCall(input),
+    );
+    expect(serviceCalls).toHaveLength(2);
+    for (const call of serviceCalls) {
+      expect(new Headers(call[1]?.headers).get("Authorization")).toBe(
+        `Bearer ${token}`,
+      );
+    }
   });
 
-  it("fails the request (and doesn't fetch) when the token can't be minted in production", async () => {
+  it("fails the request (and never calls mf_service) when the metadata server errors in production", async () => {
     vi.stubEnv("NODE_ENV", "production");
-    fetchIdToken.mockRejectedValue(new Error("metadata server unreachable"));
     const { listBatches } = await freshModule();
 
-    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (input: unknown) => {
+        if (isMetadataCall(input)) {
+          return new Response("no metadata", {
+            status: 500,
+            statusText: "Internal Server Error",
+          });
+        }
+        return new Response("[]", { status: 200 });
+      });
 
     const err = await listBatches("user-123").catch((e) => e);
     expect(err).toBeInstanceOf(Error);
-    // The error is wrapped with actionable context and preserves the cause.
+    // Wrapped with actionable context, preserving the underlying cause.
     expect((err as Error).message).toMatch(/Google ID token/i);
     expect((err as Error).cause).toBeInstanceOf(Error);
-    // We must not send an unauthenticated request that Cloud Run would reject.
-    expect(fetchMock).not.toHaveBeenCalled();
+    // Must not send an unauthenticated request mf_service would reject: only the
+    // metadata attempt happened, never the mf_service call.
+    expect(metadataCalls(fetchMock)).toHaveLength(1);
+    expect(
+      fetchMock.mock.calls.filter(([input]) => !isMetadataCall(input)),
+    ).toHaveLength(0);
   });
 
-  it("reuses one ID-token client across calls (built once, not per request)", async () => {
+  it("fails loudly when the metadata request rejects (network error)", async () => {
     vi.stubEnv("NODE_ENV", "production");
     const { listBatches } = await freshModule();
 
-    // A fresh Response per call — a single Response body can only be read once,
-    // and this test makes three calls.
-    vi.spyOn(globalThis, "fetch").mockImplementation(
-      async () => new Response("[]", { status: 200 }),
-    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input: unknown) => {
+      if (isMetadataCall(input)) throw new TypeError("fetch failed");
+      return new Response("[]", { status: 200 });
+    });
+
+    await expect(listBatches("user-123")).rejects.toThrow(/Google ID token/i);
+  });
+
+  it("caches the token across calls while it is fresh (one metadata fetch for many requests)", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const { listBatches } = await freshModule();
+
+    const fetchMock = stubFetch(makeJwt(3600)); // valid ~1h
 
     await listBatches("user-123");
     await listBatches("user-123");
     await listBatches("user-123");
 
-    // The client is cached by audience, so it's created once and only the token
-    // is re-fetched (the library caches/refreshes that itself).
-    expect(getIdTokenClient).toHaveBeenCalledTimes(1);
-    expect(fetchIdToken).toHaveBeenCalledTimes(3);
+    // Token fetched once from the metadata server, reused for all three calls.
+    expect(metadataCalls(fetchMock)).toHaveLength(1);
+    expect(
+      fetchMock.mock.calls.filter(([input]) => !isMetadataCall(input)),
+    ).toHaveLength(3);
+  });
+
+  it("re-fetches the token once it is near expiry", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const { listBatches } = await freshModule();
+
+    // `exp` only 60s out — within the 5-min refresh skew, so it's treated as
+    // already stale and re-fetched every call.
+    const fetchMock = stubFetch(() => makeJwt(60));
+
+    await listBatches("user-123");
+    await listBatches("user-123");
+
+    expect(metadataCalls(fetchMock)).toHaveLength(2);
   });
 });
