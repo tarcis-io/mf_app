@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { StatusBadge, STATUS_COLORS, STATUS_LABELS } from "./batch-status";
 import { BATCH_STATUSES } from "@/lib/mf-service";
+import { hexToRgb } from "@/test/colors";
 
 /**
  * Direct tests for the shared status presentation (`StatusBadge` + the
@@ -13,12 +14,9 @@ import { BATCH_STATUSES } from "@/lib/mf-service";
  */
 
 // jsdom may serialize a seed hex to its rgb() form inside a stored inline
-// style's `color-mix`, so accept either representation. Derived from the
-// imported seed (not a re-encoded literal) so the test tracks the palette.
-const hexToRgb = (hex: string) => {
-  const n = parseInt(hex.slice(1), 16);
-  return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`;
-};
+// style's `color-mix`, so comparisons accept either representation via the
+// shared `hexToRgb` helper (see `@/test/colors`), derived from the imported
+// seed (not a re-encoded literal) so the test tracks the palette.
 
 describe("STATUS_LABELS / STATUS_COLORS", () => {
   it("has a label and a color for every BatchStatus (exhaustive, no extras)", () => {

@@ -24,6 +24,22 @@ if (!dialogProto.close) {
   };
 }
 
+// jsdom (31.x) ships a real UA stylesheet with `dialog:not([open]) { display:
+// none }`, and its focus implementation refuses to focus an element inside a
+// `display: none` subtree. The shared `Dialog` sets the `open` attribute from an
+// effect (`showModal()`), which runs *after* React has already committed the
+// form — so at the moment a field's `autoFocus` fires, the enclosing <dialog>
+// still has no `open` attribute and is computed `display: none`, and the focus
+// is silently dropped. That makes the dialogs' autofocus assertions (new-batch,
+// edit-batch) fail under this jsdom. Neutralize just that one UA rule with an
+// author stylesheet (author origin wins over UA), so a dialog's descendants are
+// focusable regardless of when the `open` attribute lands. Test-environment
+// only (this file is loaded solely by Vitest) and loaded once per file.
+const dialogVisibilityOverride = document.createElement("style");
+dialogVisibilityOverride.setAttribute("data-test-dialog-visibility", "");
+dialogVisibilityOverride.textContent = "dialog:not([open]) { display: block; }";
+document.head.appendChild(dialogVisibilityOverride);
+
 afterEach(() => {
   cleanup();
 });

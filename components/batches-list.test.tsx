@@ -17,6 +17,7 @@ vi.mock("@/app/batches/actions", () => ({
 
 import { STATUS_COLORS } from "./batch-status";
 import BatchesList, { type BatchListItem } from "./batches-list";
+import { styleReferencesColor } from "@/test/colors";
 
 /** A list item with sensible defaults; override any field per test. */
 function makeItem(overrides: Partial<BatchListItem> = {}): BatchListItem {
@@ -273,18 +274,11 @@ describe("BatchesList", () => {
     // against the imported STATUS_COLORS seed (not a hardcoded literal) so the
     // test tracks the source rather than re-encoding the palette. Labels also
     // appear as <option>s in the status <select>, so lookups are scoped to the
-    // results row.
-    //
-    // #ef4444 -> rgb(239, 68, 68), #22c55e -> rgb(34, 197, 94).
-    const hexToRgb = (hex: string) => {
-      const n = parseInt(hex.slice(1), 16);
-      return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`;
-    };
+    // results row. The hex↔rgb() matching lives in the shared `@/test/colors`
+    // helper (jsdom may serialize the seed hex to rgb() inside the style).
     /** True if the inline style references the status's seed color at all. */
-    const tintsFrom = (style: string, status: "processed" | "error") => {
-      const hex = STATUS_COLORS[status];
-      return style.includes(hex) || style.includes(hexToRgb(hex));
-    };
+    const tintsFrom = (style: string, status: "processed" | "error") =>
+      styleReferencesColor(style, STATUS_COLORS[status]);
 
     it("tints each badge from its status color (error = red-derived)", () => {
       render(<BatchesList batches={[makeItem({ name: "Boom", status: "error" })]} />);

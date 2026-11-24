@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import Card from "@/components/card";
+import BatchesCardError from "@/components/batches-card-error";
 import BatchesIcon from "@/components/batches-icon";
 import { STATUS_COLORS, STATUS_LABELS } from "@/components/batch-status";
 import { BATCH_STATUSES, summarizeBatches } from "@/lib/mf-service";
@@ -50,7 +51,7 @@ export default async function BatchesCard() {
 async function BatchesContent() {
   const result = await loadUserBatches("BatchesCard");
   if ("error" in result) {
-    return <CardError />;
+    return <BatchesCardError />;
   }
 
   const summary = summarizeBatches(result.batches);
@@ -89,14 +90,5 @@ async function BatchesContent() {
         ))}
       </dl>
     </>
-  );
-}
-
-/** Shown when the session has no user id or the service call fails. */
-function CardError() {
-  return (
-    <p className="text-sm text-foreground/50">
-      Couldn&apos;t load batches right now.
-    </p>
   );
 }

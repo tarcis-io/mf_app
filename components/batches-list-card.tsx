@@ -1,4 +1,5 @@
 import Card from "@/components/card";
+import BatchesCardError from "@/components/batches-card-error";
 import BatchesIcon from "@/components/batches-icon";
 import BatchesList, { type BatchListItem } from "@/components/batches-list";
 import NewBatchDialog from "@/components/new-batch-dialog";
@@ -83,17 +84,8 @@ export default async function BatchesListCard() {
 async function BatchesListContent() {
   const result = await loadUserBatches("BatchesListCard");
   if ("error" in result) {
-    return <CardError />;
+    return <BatchesCardError />;
   }
 
   return <BatchesList batches={toSortedItems(result.batches)} />;
-}
-
-/** Shown when the session has no user id or the service call fails. */
-function CardError() {
-  return (
-    <p className="text-sm text-foreground/50">
-      Couldn&apos;t load batches right now.
-    </p>
-  );
 }

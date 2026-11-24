@@ -190,7 +190,10 @@ mf_app/                                    # repository root
 ├── DEPLOYMENT.md                          # Cloud Run deployment guide (env contract, OAuth)
 ├── README.md
 ├── scripts/
-│   └── generate-env.mjs                   # `pnpm setup`: scaffold a ready-to-run .env.local (AUTH_SECRET + dev-login)
+│   ├── generate-env.mjs                   # `pnpm setup`: scaffold a ready-to-run .env.local (AUTH_SECRET + dev-login)
+│   └── generate-env.test.ts
+├── test/
+│   └── colors.ts                          # shared test helper: hex↔rgb() color-mix assertions
 ├── types/
 │   └── next-auth.d.ts                     # Auth.js type augmentation (session.user.id)
 ├── lib/
@@ -201,17 +204,38 @@ mf_app/                                    # repository root
 │   ├── content-security-policy.ts         # the CSP (canonical home); imported by next.config.ts, survives App Hosting's config rewrite
 │   ├── content-security-policy.test.ts
 │   ├── app-info.ts                        # app identity single source of truth (name/version/URL/repos)
+│   ├── app-info.test.ts
 │   ├── theme.ts                           # theme preference: storage key, init script, apply/read helpers
 │   └── theme.test.ts
 ├── public/
 │   └── logo.svg                           # wordmark logo (login page + drawer)
 ├── components/
+│   ├── card.tsx                           # shared card shell (icon + title, optional actions/footer)
+│   ├── card.test.tsx
+│   ├── dialog.tsx                         # shared modal built on <dialog> (backdrop/Escape to close)
+│   ├── dialog.test.tsx
+│   ├── batch-status.tsx                   # status labels + colors + StatusBadge (shared by card & list)
+│   ├── batch-status.test.tsx
+│   ├── batches-icon.tsx                   # shared "batches" glyph (drawer link + card title)
+│   ├── batches-icon.test.tsx
+│   ├── batches-card.tsx                   # home-page card: batch total + per-status counts
+│   ├── batches-card.test.tsx
+│   ├── batches-card-error.tsx             # shared "couldn't load batches" body (both batches cards)
+│   ├── batches-card-error.test.tsx
+│   ├── batches-list-card.tsx              # /batches card: server fetch + sort, hosts the "+ New" dialog
+│   ├── batches-list-card.test.tsx
+│   ├── batches-list.tsx                   # client list: name/status filters + per-row edit/delete
+│   ├── batches-list.test.tsx
+│   ├── new-batch-dialog.tsx               # "+ New" trigger + create-batch form (5 file uploads)
+│   ├── new-batch-dialog.test.tsx
+│   ├── edit-batch-dialog.tsx              # rename-batch dialog
+│   ├── edit-batch-dialog.test.tsx
+│   ├── delete-batch-dialog.tsx            # delete-batch confirmation dialog
+│   ├── delete-batch-dialog.test.tsx
 │   ├── neural-network-background.tsx      # decorative animated login backdrop
 │   ├── neural-network-background.test.tsx
 │   ├── error-page.tsx                     # shared centered layout for 404 / 500
 │   ├── error-page.test.tsx
-│   ├── batches-card.tsx                   # home-page card: batch total + per-status counts
-│   ├── batches-card.test.tsx
 │   ├── user-label.tsx                     # signed-in user's name/email (header)
 │   ├── user-label.test.tsx
 │   ├── theme-radio.tsx                    # Settings theme selector (System/Light/Dark)
@@ -221,6 +245,7 @@ mf_app/                                    # repository root
 │       ├── logged-in-template.test.tsx
 │       ├── app-shell.tsx                  # client chrome: fixed header, nav drawer, scrollable main
 │       ├── app-shell.hooks.ts             # drawer drag-to-close + dismiss/scroll-lock hooks
+│       ├── app-shell.hooks.test.tsx
 │       └── app-shell.test.tsx
 └── app/
     ├── layout.tsx                         # root layout (fonts, metadata, viewport)
@@ -247,7 +272,9 @@ mf_app/                                    # repository root
     │   └── page.test.tsx
     ├── batches/
     │   ├── page.tsx                       # "/batches" — batches page
-    │   └── page.test.tsx
+    │   ├── page.test.tsx
+    │   ├── actions.ts                     # server actions: create / rename / delete a batch
+    │   └── actions.test.ts
     └── settings/
         ├── page.tsx                       # "/settings" — settings page
         └── page.test.tsx
@@ -280,9 +307,9 @@ every batch to its owner. In production each call additionally carries a
 Google-signed ID token so `mf_service` can run privately (see
 [Security](#security)). The full batch surface is wired up: the home page's
 **Batches** card shows the total plus a per-status breakdown, and the
-**/batches** page lists the signed-in user's batches and lets them create a
-batch (uploading the five required files via `POST /batches`), rename, and
-delete. `mf_service` has no counts endpoint, so the totals are derived from the
+**/batches** page lists the signed-in user's batches (filterable by name and
+status) and lets them create a batch (uploading the five required files via
+`POST /batches`), rename, and delete. `mf_service` has no counts endpoint, so the totals are derived from the
 list server-side. The **About** page is a second consumer: it reads
 `GET /version` to display the running `mf_service` and `mf_engine` versions.
 
